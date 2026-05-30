@@ -1,0 +1,17 @@
+{
+  "name": "市集銷售記錄",
+  "short_name": "銷售記錄",
+  "description": "手作擺攤銷售記錄與對帳(純本機離線)",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#fff7f0",
+  "theme_color": "#6d4c41",
+  "lang": "zh-Hant",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
