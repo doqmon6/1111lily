@@ -1,7 +1,7 @@
 // 記銷售熱路徑:點商品加入購物車 → 調數量 → 選付款方式 → 完成。
 // 一筆可含多商品;總額自動加總;存檔後即時更新「今天累計」。支援現場新增商品。
-import { getActiveProducts, addProduct, addSale, getSalesByDate } from '../db.js';
-import { computeTotal, summarizeDay, dateKey, formatMoney } from '../logic.js';
+import { getActiveProducts, addProduct, addSale, getSalesByDate, getOpenOuting } from '../db.js';
+import { computeTotal, outingRevenue, dateKey, formatMoney } from '../logic.js';
 import { el } from './dom.js';
 
 let container;
@@ -10,6 +10,7 @@ let cart = [];
 export async function init(viewEl) {
   container = viewEl;
   container.replaceChildren(
+    el('div', { id: 'active-outing', class: 'active-outing' }),
     el('div', { id: 'today-summary', class: 'today-summary' }),
     el('section', { class: 'card' },
       el('div', { class: 'card-head' },
@@ -27,6 +28,13 @@ export async function init(viewEl) {
         el('select', { id: 'pay-method' },
           el('option', { value: 'cash', text: '現金' }),
           el('option', { value: 'transfer', text: '轉帳' }),
+        ),
+      ),
+      el('label', { class: 'field' }, '類型',
+        el('select', { id: 'sale-type' },
+          el('option', { value: 'sale', text: '正常銷售' }),
+          el('option', { value: 'gift', text: '贈送(不計營收)' }),
+          el('option', { value: 'replacement', text: '補送(不計營收)' }),
         ),
       ),
       el('button', { class: 'btn accent', id: 'checkout-btn', type: 'button', text: '完成這筆', onClick: onCheckout }),
@@ -60,7 +68,7 @@ async function renderGrid() {
 function addToCart(p) {
   const existing = cart.find((i) => i.productId === p.id);
   if (existing) existing.qty += 1;
-  else cart.push({ productId: p.id, name: p.name, price: p.price, qty: 1 });
+  else cart.push({ productId: p.id, name: p.name, price: p.price, cost: p.cost ?? 0, qty: 1 });
   renderCart();
 }
 
@@ -103,23 +111,35 @@ async function onCheckout() {
     showMsg('購物車是空的', true);
     return;
   }
+  const outing = await getOpenOuting();
+  if (!outing) {
+    showMsg('尚未開始場次,請先到「場次」分頁開始一場擺攤', true);
+    return;
+  }
   const paymentMethod = container.querySelector('#pay-method').value;
-  const items = cart.map((i) => ({ productId: i.productId, name: i.name, price: i.price, qty: i.qty }));
+  const type = container.querySelector('#sale-type').value;
+  const items = cart.map((i) => ({ productId: i.productId, name: i.name, price: i.price, cost: i.cost ?? 0, qty: i.qty }));
   const total = computeTotal(items);
-  await addSale({ items, total, paymentMethod });
+  await addSale({ items, total, paymentMethod, outingId: outing.id, type });
   cart = [];
+  container.querySelector('#sale-type').value = 'sale';
   renderCart();
   await refreshToday();
-  showMsg('已記錄一筆 ' + formatMoney(total), false);
+  const label = type === 'sale' ? '已記錄一筆 ' + formatMoney(total) : '已記錄(不計營收)';
+  showMsg(label, false);
 }
 
 async function refreshToday() {
+  const outing = await getOpenOuting();
+  const banner = container.querySelector('#active-outing');
+  if (outing) banner.replaceChildren(el('span', { text: '目前場次:' }), el('strong', { text: outing.name }));
+  else banner.replaceChildren(el('span', { class: 'warn', text: '尚未開始場次 — 到「場次」分頁開始一場才能記銷售' }));
+
   const sales = await getSalesByDate(dateKey(new Date()));
-  const sum = summarizeDay(sales);
   container.querySelector('#today-summary').replaceChildren(
     el('span', { class: 'ts-label', text: '今天累計' }),
-    el('strong', { id: 'today-total', class: 'ts-total', text: formatMoney(sum.total) }),
-    el('span', { id: 'today-count', class: 'ts-count', text: `${sum.count} 筆` }),
+    el('strong', { id: 'today-total', class: 'ts-total', text: formatMoney(outingRevenue(sales)) }),
+    el('span', { id: 'today-count', class: 'ts-count', text: `${sales.length} 筆` }),
   );
 }
 
@@ -135,23 +155,26 @@ function toggleOnFlyForm() {
   wrap.hidden = false;
   const nameInput = el('input', { id: 'of-name', type: 'text', maxlength: 40, placeholder: '品名' });
   const priceInput = el('input', { id: 'of-price', type: 'number', min: 1, step: 1, inputmode: 'numeric', placeholder: '單價' });
+  const costInput = el('input', { id: 'of-cost', type: 'number', min: 0, step: 1, inputmode: 'numeric', placeholder: '成本(選填)' });
   const err = el('p', { id: 'of-error', class: 'error', hidden: true });
   const form = el('form', { class: 'onfly', novalidate: true,
     onSubmit: async (e) => {
       e.preventDefault();
       const name = nameInput.value.trim();
       const price = Number(priceInput.value);
-      if (!name || !Number.isInteger(price) || price <= 0) {
-        err.textContent = '品名必填,單價需為正整數';
+      const costRaw = costInput.value.trim();
+      const cost = costRaw === '' ? 0 : Number(costRaw);
+      if (!name || !Number.isInteger(price) || price <= 0 || !Number.isInteger(cost) || cost < 0) {
+        err.textContent = '品名必填,單價需為正整數,成本需為 0 或正整數';
         err.hidden = false;
         return;
       }
-      const product = await addProduct({ name, price });
+      const product = await addProduct({ name, price, cost });
       await renderGrid();
       addToCart(product);
       toggleOnFlyForm();
     } },
-    nameInput, priceInput,
+    nameInput, priceInput, costInput,
     el('button', { class: 'btn primary', type: 'submit', text: '新增並加入' }),
     err,
   );

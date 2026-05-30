@@ -8,10 +8,19 @@ async function addProduct(page, name, price) {
   await expect(page.locator('#product-list')).toContainText(name);
 }
 
+async function startOuting(page, name) {
+  await page.locator('.tab[data-target="outing"]').click();
+  await page.getByRole('button', { name: /開始新場次/ }).click();
+  await page.fill('#o-name', name);
+  await page.getByRole('button', { name: '開始場次' }).click();
+  await expect(page.locator('#view-outing .active-outing')).toContainText(name);
+}
+
 test('多商品銷售:即時總額、完成存檔、今天累計更新', async ({ page }) => {
   await page.goto('/index.html');
   await addProduct(page, '手鍊', 100);
   await addProduct(page, '耳環', 150);
+  await startOuting(page, '測試場');
   await page.locator('.tab[data-target="sale"]').click();
 
   const bracelet = page.locator('.product-btn', { hasText: '手鍊' });

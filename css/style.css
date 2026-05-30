@@ -129,6 +129,7 @@ input, select {
 .row-main { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .row-name { font-weight: 600; }
 .row-price { color: var(--muted); }
+.row-cost { color: var(--muted); font-size: .85rem; }
 .badge { font-size: .72rem; background: #f3e9e2; color: var(--muted); border-radius: 999px; padding: 2px 8px; }
 .row-actions { display: flex; gap: 6px; flex-shrink: 0; }
 .row-actions .btn { padding: 8px 10px; min-height: 40px; }
@@ -217,5 +218,23 @@ input, select {
 .edit-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .edit-total { font-size: 1.2rem; }
 
+/* 場次 */
+.active-outing { background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; }
+.active-outing strong { color: var(--primary); }
+.active-outing .warn { color: var(--danger); }
+.sub-form { background: var(--bg); }
+.field-group-label { margin: 8px 0 2px; font-weight: 600; font-size: .9rem; }
+.bring-row { flex-direction: row; align-items: center; justify-content: space-between; gap: 10px; }
+.bring-row input { width: 90px; }
+.stat-value.neg, .stat.neg .stat-value { color: var(--danger); }
+.agg-table { width: 100%; border-collapse: collapse; font-size: .92rem; }
+.agg-table th, .agg-table td { padding: 8px 6px; border-bottom: 1px solid var(--line); text-align: left; }
+.agg-table th.num, .agg-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.agg-table tr.dead td { color: var(--muted); }
+.agg-table .badge { margin-left: 6px; }
+
 /* 匯出 */
 .hint { color: var(--muted); font-size: .9rem; margin: 0; line-height: 1.5; }
+.backup-reminder { border-radius: 12px; padding: 10px 12px; margin-bottom: 12px; font-size: .9rem; line-height: 1.5; }
+.backup-reminder.warn { background: #fdecea; color: var(--danger); border: 1px solid #f3b6b0; }
+.backup-reminder.ok { background: #eaf4ea; color: var(--accent); border: 1px solid #bcdcbc; }

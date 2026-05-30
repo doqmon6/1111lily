@@ -41,6 +41,28 @@ test('停售後顯示已停售,可恢復', async ({ page }) => {
   await expect(row).not.toContainText('已停售');
 });
 
+test('成本可記錄、可編輯,列表顯示', async ({ page }) => {
+  await gotoProducts(page);
+  await page.fill('#p-name', '手鍊');
+  await page.fill('#p-price', '150');
+  await page.fill('#p-cost', '60');
+  await page.click('#product-form button[type="submit"]');
+  await expect(page.locator('#product-list li', { hasText: '手鍊' })).toContainText('成本 $60');
+
+  await page.locator('#product-list li', { hasText: '手鍊' }).getByRole('button', { name: '編輯' }).click();
+  await page.locator('#product-list .e-cost').fill('70');
+  await page.locator('#product-list').getByRole('button', { name: '儲存' }).click();
+  await expect(page.locator('#product-list')).toContainText('成本 $70');
+});
+
+test('成本選填,留空存為 $0', async ({ page }) => {
+  await gotoProducts(page);
+  await page.fill('#p-name', '貼紙');
+  await page.fill('#p-price', '30');
+  await page.click('#product-form button[type="submit"]');
+  await expect(page.locator('#product-list li', { hasText: '貼紙' })).toContainText('成本 $0');
+});
+
 test('編輯商品名稱與價格', async ({ page }) => {
   await gotoProducts(page);
   await page.fill('#p-name', '手鍊');

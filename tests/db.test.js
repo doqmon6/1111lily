@@ -4,7 +4,8 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { dateKey } from '../js/logic.js';
 import {
   addProduct, getAllProducts, getActiveProducts, setProductActive, getProduct, updateProduct,
-  addSale, getSalesByDate, getAllSales, updateSale, deleteSale, _closeDb,
+  addSale, getSalesByDate, getSalesByOuting, getAllSales, updateSale, deleteSale, _closeDb,
+  addOuting, getAllOutings, getOpenOuting, closeOuting, ensureMigrated,
 } from '../js/db.js';
 
 beforeEach(() => {
@@ -71,5 +72,92 @@ describe('sales', () => {
     const k1 = dateKey(new Date('2026-05-30T02:00:00.000Z'));
     expect(await getSalesByDate(k1)).toHaveLength(1);
     expect(await getAllSales()).toHaveLength(2);
+  });
+
+  it('addSale 預設 type=sale、outingId=null', async () => {
+    const s = await addSale({ items: [], total: 0, paymentMethod: 'cash', createdAt: '2026-05-30T01:00:00.000Z' });
+    expect(s.type).toBe('sale');
+    expect(s.outingId).toBeNull();
+  });
+
+  it('銷售綁定場次與類型,可依場次查詢', async () => {
+    const o = await addOuting({ name: '松菸' });
+    const item = [{ productId: 'a', name: 'A', price: 50, cost: 20, qty: 1 }];
+    await addSale({ items: item, total: 50, paymentMethod: 'cash', outingId: o.id, type: 'sale', createdAt: '2026-05-30T01:00:00.000Z' });
+    await addSale({ items: item, total: 50, paymentMethod: 'cash', outingId: o.id, type: 'gift', createdAt: '2026-05-30T02:00:00.000Z' });
+    const list = await getSalesByOuting(o.id);
+    expect(list).toHaveLength(2);
+    expect(list.map((s) => s.type)).toEqual(['sale', 'gift']);
+  });
+});
+
+describe('product cost', () => {
+  it('商品帶成本,未填預設 0', async () => {
+    const p = await addProduct({ name: '手鍊', price: 100, cost: 40 });
+    expect(p.cost).toBe(40);
+    const p2 = await addProduct({ name: '貼紙', price: 30 });
+    expect(p2.cost).toBe(0);
+  });
+});
+
+describe('outings', () => {
+  it('新增=進行中;同時只一場進行中;關閉後無進行中', async () => {
+    const o = await addOuting({ name: '玩具展', fixedCosts: [{ label: '攤租', amount: 2000 }] });
+    expect(o.status).toBe('open');
+    expect(o.fixedCosts[0].amount).toBe(2000);
+    expect((await getOpenOuting()).id).toBe(o.id);
+    await closeOuting(o.id);
+    expect(await getOpenOuting()).toBeNull();
+    const all = await getAllOutings();
+    expect(all).toHaveLength(1);
+    expect(all[0].status).toBe('closed');
+    expect(all[0].closedAt).toBeTruthy();
+  });
+});
+
+describe('v1 → v2 遷移', () => {
+  function openV1() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open('market-sales-db', 1);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        db.createObjectStore('products', { keyPath: 'id' });
+        const sales = db.createObjectStore('sales', { keyPath: 'id' });
+        sales.createIndex('dateKey', 'dateKey', { unique: false });
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  it('舊銷售(無 outingId)升級後保留,並歸入已關閉的「舊紀錄」場次', async () => {
+    const v1 = await openV1();
+    await new Promise((resolve, reject) => {
+      const tx = v1.transaction('sales', 'readwrite');
+      tx.objectStore('sales').add({
+        id: 'old-1',
+        items: [{ productId: 'p', name: '舊商品', price: 100, qty: 1 }],
+        total: 100, paymentMethod: 'cash',
+        createdAt: '2026-05-01T01:00:00.000Z', dateKey: '2026-05-01',
+      });
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+    v1.close();
+
+    const legacy = await ensureMigrated();
+    expect(legacy.name).toBe('舊紀錄');
+    expect(legacy.status).toBe('closed');
+
+    const all = await getAllSales();
+    expect(all).toHaveLength(1);
+    expect(all[0].id).toBe('old-1');
+    expect(all[0].total).toBe(100);
+    expect(all[0].outingId).toBe(legacy.id);
+
+    expect(await getSalesByOuting(legacy.id)).toHaveLength(1);
+    // 冪等:再跑一次不再建場次、不重複處理
+    expect(await ensureMigrated()).toBeNull();
+    expect(await getAllOutings()).toHaveLength(1);
   });
 });

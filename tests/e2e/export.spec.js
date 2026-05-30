@@ -1,12 +1,24 @@
 import { test, expect } from '@playwright/test';
 import fs from 'node:fs/promises';
 
-async function addProduct(page, name, price) {
+async function addProduct(page, name, price, cost) {
   await page.locator('.tab[data-target="products"]').click();
   await page.fill('#p-name', name);
   await page.fill('#p-price', String(price));
+  if (cost != null) await page.fill('#p-cost', String(cost));
   await page.click('#product-form button[type="submit"]');
   await expect(page.locator('#product-list')).toContainText(name);
+}
+
+async function startOuting(page, name, { bring = {} } = {}) {
+  await page.locator('.tab[data-target="outing"]').click();
+  await page.getByRole('button', { name: /開始新場次/ }).click();
+  await page.fill('#o-name', name);
+  for (const [prod, qty] of Object.entries(bring)) {
+    await page.locator('label.bring-row', { hasText: prod }).locator('input').fill(String(qty));
+  }
+  await page.getByRole('button', { name: '開始場次' }).click();
+  await expect(page.locator('#view-outing .active-outing')).toContainText(name);
 }
 
 async function recordSale(page, name, qty, method) {
@@ -17,39 +29,100 @@ async function recordSale(page, name, qty, method) {
   await page.click('#checkout-btn');
 }
 
-test('匯出當天 CSV:UTF-8 BOM + 表頭 + 數值', async ({ page }) => {
+test('場次明細 CSV:新表頭(場次/類型、無件數)與數值', async ({ page }) => {
   await page.goto('/index.html');
-  await addProduct(page, '手鍊', 100);
+  await addProduct(page, '手鍊', 100, 40);
+  await startOuting(page, '玩具展');
   await recordSale(page, '手鍊', 2, 'cash');
 
   await page.locator('.tab[data-target="export"]').click();
   const [download] = await Promise.all([
     page.waitForEvent('download'),
-    page.click('#export-day-btn'),
+    page.click('#export-detail-btn'),
   ]);
   const buf = await fs.readFile(await download.path());
-
-  // UTF-8 BOM = EF BB BF
-  expect([buf[0], buf[1], buf[2]]).toEqual([0xef, 0xbb, 0xbf]);
+  expect([buf[0], buf[1], buf[2]]).toEqual([0xef, 0xbb, 0xbf]); // UTF-8 BOM
 
   const text = buf.toString('utf8').replace(/^﻿/, '');
-  expect(text).toContain('日期,時間,商品明細,件數,總金額,付款方式');
-  expect(text).toContain('手鍊×2');
-  expect(text).toContain(',2,200,現金');
+  expect(text).toContain('日期,時間,場次,類型,商品明細,總金額,付款方式');
+  expect(text).not.toContain('件數');
+  expect(text).toContain('玩具展,正常銷售,手鍊×2,200,現金');
 });
 
-test('匯出全部 CSV:多筆都在', async ({ page }) => {
+test('商品彙總 CSV:每商品 帶/賣/剩/收入/成本', async ({ page }) => {
   await page.goto('/index.html');
-  await addProduct(page, '貼紙', 30);
-  await recordSale(page, '貼紙', 1, 'cash');
-  await recordSale(page, '貼紙', 2, 'transfer');
+  await addProduct(page, '明信片', 20, 8);
+  await startOuting(page, '松菸', { bring: { 明信片: 30 } });
+  await recordSale(page, '明信片', 5, 'cash');
 
   await page.locator('.tab[data-target="export"]').click();
   const [download] = await Promise.all([
     page.waitForEvent('download'),
-    page.click('#export-all-btn'),
+    page.click('#export-summary-btn'),
   ]);
   const text = (await fs.readFile(await download.path())).toString('utf8');
-  const lines = text.trim().split('\r\n');
-  expect(lines.length).toBe(3); // 表頭 + 2 筆
+  expect(text).toContain('商品,帶量,賣出,剩餘,收入,成本');
+  expect(text).toContain('明信片,30,5,25,100,40'); // 帶30 賣5 剩25 收入100 成本5×8=40
+});
+
+test('未備份提醒:有未備份顯示警告,備份後轉為已備份', async ({ page }) => {
+  await page.goto('/index.html');
+  await addProduct(page, '貼紙', 30);
+  await startOuting(page, '一日場');
+  await recordSale(page, '貼紙', 1, 'cash');
+
+  await page.locator('.tab[data-target="export"]').click();
+  await expect(page.locator('#backup-reminder')).toContainText('尚未備份');
+  const [dl] = await Promise.all([
+    page.waitForEvent('download'),
+    page.click('#backup-btn'),
+  ]);
+  await dl.path();
+  await expect(page.locator('#backup-reminder')).toContainText('已備份');
+});
+
+test('JSON 備份 → 清空 → 還原,資料完整回來', async ({ page }) => {
+  await page.goto('/index.html');
+  await addProduct(page, '手鍊', 100, 40);
+  await startOuting(page, '玩具展');
+  await recordSale(page, '手鍊', 2, 'cash');
+
+  await page.locator('.tab[data-target="export"]').click();
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    page.click('#backup-btn'),
+  ]);
+  const backupPath = await download.path();
+
+  // 模擬手機資料被清空:清掉三個 store 後重載
+  await page.evaluate(() => new Promise((resolve, reject) => {
+    const req = indexedDB.open('market-sales-db');
+    req.onsuccess = () => {
+      const db = req.result;
+      const tx = db.transaction(['products', 'sales', 'outings'], 'readwrite');
+      tx.objectStore('products').clear();
+      tx.objectStore('sales').clear();
+      tx.objectStore('outings').clear();
+      tx.oncomplete = () => { db.close(); resolve(); };
+      tx.onerror = () => reject(tx.error);
+    };
+    req.onerror = () => reject(req.error);
+  }));
+  await page.reload();
+
+  await page.locator('.tab[data-target="products"]').click();
+  await expect(page.locator('#product-list')).toContainText('還沒有商品');
+
+  // 還原(接受覆蓋確認)
+  page.on('dialog', (d) => d.accept());
+  await page.locator('.tab[data-target="export"]').click();
+  await page.setInputFiles('#restore-file', backupPath);
+  await expect(page.locator('#export-msg')).toContainText('已還原');
+
+  // 資料回來:商品、場次、收入
+  await page.locator('.tab[data-target="products"]').click();
+  await expect(page.locator('#product-list')).toContainText('手鍊');
+  await page.locator('.tab[data-target="outing"]').click();
+  await expect(page.locator('#view-outing')).toContainText('玩具展');
+  await expect(page.locator('#view-outing .stat', { hasText: '收入' })).toContainText('$200');
 });

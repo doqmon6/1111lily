@@ -2,20 +2,21 @@
 // 每個分頁模組提供 init(el)(首次建立)與選用的 show()(每次顯示時刷新資料)。
 import * as products from './ui/products.js';
 import * as sale from './ui/sale.js';
-import * as report from './ui/report.js';
+import * as outing from './ui/outing.js';
 import * as exporter from './ui/exporter.js';
+import { ensureMigrated } from './db.js';
 
 const TITLES = {
   sale: '記銷售',
   products: '商品',
-  report: '當日對帳',
+  outing: '場次',
   export: '匯出備份',
 };
 
 const VIEWS = {
   sale,
   products,
-  report,
+  outing,
   export: exporter,
 };
 
@@ -57,5 +58,8 @@ function registerServiceWorker() {
   });
 }
 
+// 要求瀏覽器給「持久儲存」,降低未備份資料被自動清除的機率。
+if (navigator.storage?.persist) navigator.storage.persist().catch(() => {});
+ensureMigrated().catch((err) => console.error('資料遷移失敗', err));
 initNav();
 registerServiceWorker();

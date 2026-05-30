@@ -8,8 +8,8 @@ test('四個分頁可切換', async ({ page }) => {
   await expect(page.locator('#view-products')).toBeVisible();
   await expect(page.locator('#view-sale')).toBeHidden();
 
-  await page.locator('.tab[data-target="report"]').click();
-  await expect(page.locator('#view-report')).toBeVisible();
+  await page.locator('.tab[data-target="outing"]').click();
+  await expect(page.locator('#view-outing')).toBeVisible();
 
   await page.locator('.tab[data-target="export"]').click();
   await expect(page.locator('#view-export')).toBeVisible();
