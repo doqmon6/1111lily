@@ -4,13 +4,12 @@
 // - 登出按鈕(低調,尾部)。
 import {
   getAllSales, getSalesByOuting, getAllOutings, getOuting, getAllProducts, exportAll, importAll,
+  getPendingSalesCount,
 } from '../db.js';
 import { toSalesCSV, toProductSummaryCSV, productAggregate, ranking, dateKey } from '../logic.js';
 import { el } from './dom.js';
 import { signOutUser } from '../auth.js';
 import { renderHistoryCard } from './history.js';
-
-const LAST_BACKUP_KEY = 'market-sales:lastBackupAt';
 
 let container;
 
@@ -108,8 +107,6 @@ async function backupJSON() {
   const data = await exportAll();
   const payload = { app: 'market-sales', version: 2, exportedAt: new Date().toISOString(), ...data };
   await output(JSON.stringify(payload, null, 2), `備份_${dateKey(new Date())}.json`, 'application/json');
-  localStorage.setItem(LAST_BACKUP_KEY, new Date().toISOString());
-  await renderReminder();
 }
 
 async function onRestore(e) {
@@ -136,20 +133,18 @@ async function onRestore(e) {
   showMsg(`已還原:商品 ${data.products.length}、銷售 ${data.sales.length}、場次 ${(data.outings ?? []).length}(已上傳雲端)`, false);
 }
 
-// ---- 未備份提醒 ----
+// ---- 上雲狀態提醒(M5:取代 v2 的「尚未備份」語意)----
 
 async function renderReminder() {
-  const last = localStorage.getItem(LAST_BACKUP_KEY);
-  const sales = await getAllSales();
-  const unbacked = last ? sales.filter((s) => s.createdAt > last).length : sales.length;
+  const pendingCount = await getPendingSalesCount();
   const banner = container.querySelector('#backup-reminder');
   banner.hidden = false;
-  if (unbacked > 0) {
+  if (pendingCount > 0) {
     banner.className = 'backup-reminder warn';
-    banner.replaceChildren(el('span', { text: `⚠️ 有 ${unbacked} 筆自上次備份後尚未備份。收攤後請「備份全部資料(JSON)」存到雲端或傳給自己。` }));
+    banner.replaceChildren(el('span', { text: `⚠️ 有 ${pendingCount} 筆尚未上雲(暫存在這支手機)。連上網路後會自動上傳,不用做任何事。` }));
   } else {
     banner.className = 'backup-reminder ok';
-    banner.replaceChildren(el('span', { text: '✓ 目前資料已備份。' }));
+    banner.replaceChildren(el('span', { text: '✓ 所有紀錄已上雲。' }));
   }
 }
 

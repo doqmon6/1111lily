@@ -49,6 +49,7 @@ const COLLECTIONS = ['products', 'sales', 'outings', 'changelog'];
 const TOMBSTONE = Symbol('deleted');
 let stores = null;      // { products: Map<id,obj>, sales: Map, outings: Map }
 let pending = null;     // 同構;值為 { entity|TOMBSTONE, seq }:未 ack 的本地寫入 overlay
+let pendingDocCounts = null; // { name: number } — SDK 層 hasPendingWrites 文件數(M5「尚未上雲」)
 let readyPromise = null;
 let unsubs = [];
 let writeSeq = 0;
@@ -58,6 +59,7 @@ function _teardown() {
   unsubs = [];
   stores = null;
   pending = null;
+  pendingDocCounts = null;
   readyPromise = null;
 }
 
@@ -84,11 +86,21 @@ function ensureListeners() {
   if (readyPromise) return readyPromise;
   stores = Object.fromEntries(COLLECTIONS.map((n) => [n, new Map()]));
   pending = Object.fromEntries(COLLECTIONS.map((n) => [n, new Map()]));
+  pendingDocCounts = Object.fromEntries(COLLECTIONS.map((n) => [n, 0]));
   readyPromise = Promise.all(COLLECTIONS.map((name) => new Promise((resolve) => {
-    const unsub = onSnapshot(col(name), (snap) => {
+    // includeMetadataChanges:pending→committed 的 metadata 翻轉也要觸發快照,
+    // 「N 筆尚未上雲」才能在 ack 落地時歸零(M5)。
+    const unsub = onSnapshot(col(name), { includeMetadataChanges: true }, (snap) => {
       const m = stores[name];
       m.clear();
-      for (const d of snap.docs) m.set(d.id, d.data());
+      let pendingDocs = 0;
+      for (const d of snap.docs) {
+        m.set(d.id, d.data());
+        if (d.metadata.hasPendingWrites) pendingDocs += 1;
+      }
+      // SDK 的 hasPendingWrites 來自持久化 mutation queue:離線重啟後仍準確,
+      // 勝過記憶體 pending overlay(重啟即空)。
+      pendingDocCounts[name] = pendingDocs;
       applyPending(name);
       resolve();
       notifyChanged();
@@ -104,6 +116,12 @@ function ensureListeners() {
 async function all(name) {
   await ensureListeners();
   return [...stores[name].values()];
+}
+
+// M5:「N 筆尚未上雲」— 尚未收到伺服器 ack 的銷售筆數(SDK metadata,重啟後仍準)。
+export async function getPendingSalesCount() {
+  await ensureListeners();
+  return pendingDocCounts.sales;
 }
 
 // 寫入:樂觀更新 store + pending overlay(同步、read-your-write 確定),

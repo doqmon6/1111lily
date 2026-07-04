@@ -70,19 +70,17 @@ test('商品彙總 CSV:每商品 帶/賣/剩/收入/成本', async ({ page }) =>
   expect(text).toContain('明信片,30,5,25,100,40'); // 帶30 賣5 剩25 收入100 成本5×8=40
 });
 
-test('未備份提醒:有未備份顯示警告,備份後轉為已備份', async ({ page }) => {
+test('JSON 備份可下載(banner 為 M5 上雲語意,見 sync.spec)', async ({ page }) => {
   await addProduct(page, '貼紙', 30);
   await startOuting(page, '一日場');
   await recordSale(page, '貼紙', 1, 'cash');
 
   await page.locator('.tab[data-target="export"]').click();
-  await expect(page.locator('#backup-reminder')).toContainText('尚未備份');
   const [dl] = await Promise.all([
     page.waitForEvent('download'),
     page.click('#backup-btn'),
   ]);
-  await dl.path();
-  await expect(page.locator('#backup-reminder')).toContainText('已備份');
+  expect(await dl.path()).toBeTruthy();
 });
 
 test('壞檔匯入:明確錯誤訊息、不寫入任何資料', async ({ page }) => {
