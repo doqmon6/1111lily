@@ -277,3 +277,13 @@ input, select {
   font-size: 1rem;
   padding: 14px;
 }
+
+/* 修改歷史 */
+.history-row { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.history-time { color: var(--muted); font-size: .82rem; white-space: nowrap; }
+.history-summary { flex: 1 1 auto; font-size: .92rem; }
+.badge-create { background: #eaf4ea; color: #2e7d32; }
+.badge-update { background: #fff3e0; color: #b26a00; }
+.badge-delete { background: #fdecea; color: #b3261e; }
+.history-changes { width: 100%; margin: 4px 0 0; padding-left: 1.2em; color: var(--muted); font-size: .85rem; }
+.history-changes li { list-style: disc; }

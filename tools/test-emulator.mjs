@@ -27,7 +27,7 @@ const customCmd = process.argv[2];
 // --fileParallelism=false:db.test / migrate.test 共用同一個 emulator project 並各自清庫,
 // 平行執行會互相清掉對方的資料與 Auth 帳號,必須序列。
 const testCmd = customCmd
-  ?? 'npx vitest run --fileParallelism=false --sequence.concurrent=false tests/db.test.js tests/rules.test.js tests/migrate.test.js';
+  ?? 'npx vitest run --fileParallelism=false --sequence.concurrent=false tests/db.test.js tests/rules.test.js tests/migrate.test.js tests/changelog.test.js';
 
 // emulators:exec 的 <script> 參數必須是單一字串
 const cmd = `npx firebase emulators:exec --project demo-market-sales --only firestore,auth "${testCmd}"`;

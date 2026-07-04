@@ -15,7 +15,7 @@
 import { dateKey } from './logic.js';
 import { db } from './firebase.js';
 import {
-  doc, collection, setDoc, deleteDoc, onSnapshot,
+  doc, collection, setDoc, deleteDoc, onSnapshot, writeBatch,
 } from 'firebase/firestore';
 
 // ---- uid 注入 ----
@@ -45,7 +45,7 @@ function docRef(name, id) {
 
 // ---- 長駐 listeners + store ----
 
-const COLLECTIONS = ['products', 'sales', 'outings'];
+const COLLECTIONS = ['products', 'sales', 'outings', 'changelog'];
 const TOMBSTONE = Symbol('deleted');
 let stores = null;      // { products: Map<id,obj>, sales: Map, outings: Map }
 let pending = null;     // 同構;值為 { entity|TOMBSTONE, seq }:未 ack 的本地寫入 overlay
@@ -184,6 +184,20 @@ export async function setProductActive(id, active) {
 
 // ---- sales ----
 
+function makeChangelogEntry({ entityId, action, before, after }) {
+  return {
+    id: crypto.randomUUID(),
+    entity: 'sale',
+    entityId,
+    action,
+    before: before ?? null,
+    after: after ?? null,
+    at: new Date().toISOString(),
+  };
+}
+
+// writeBatch 版本:sale 文件 + changelog 文件 同批提交,保證原子性。
+// 兩者共用同一個 commit promise,各自呼叫 track() 維護 pending overlay 不變式。
 export async function addSale({ items, total, paymentMethod, createdAt, outingId = null, type = 'sale' }) {
   const ts = createdAt ?? new Date().toISOString();
   const sale = {
@@ -196,21 +210,48 @@ export async function addSale({ items, total, paymentMethod, createdAt, outingId
     createdAt: ts,
     dateKey: dateKey(new Date(ts)),
   };
+  const entry = makeChangelogEntry({ entityId: sale.id, action: 'create', before: null, after: sale });
   await ensureListeners();
-  write('sales', sale, 'addSale');
+  const batch = writeBatch(_db);
+  batch.set(docRef('sales', sale.id), sale);
+  batch.set(docRef('changelog', entry.id), entry);
+  // 樂觀更新 store
+  stores.sales.set(sale.id, sale);
+  stores.changelog.set(entry.id, entry);
+  const p = batch.commit();
+  track('sales', sale.id, sale, p, 'addSale');
+  track('changelog', entry.id, entry, p, 'addSale/changelog');
   return sale;
 }
 
 export async function updateSale(sale) {
-  const updated = { ...sale, dateKey: dateKey(new Date(sale.createdAt)) };
   await ensureListeners();
-  write('sales', updated, 'updateSale');
+  const before = stores.sales.get(sale.id) ?? null;
+  const updated = { ...sale, dateKey: dateKey(new Date(sale.createdAt)) };
+  const entry = makeChangelogEntry({ entityId: sale.id, action: 'update', before, after: updated });
+  const batch = writeBatch(_db);
+  batch.set(docRef('sales', updated.id), updated);
+  batch.set(docRef('changelog', entry.id), entry);
+  stores.sales.set(updated.id, updated);
+  stores.changelog.set(entry.id, entry);
+  const p = batch.commit();
+  track('sales', updated.id, updated, p, 'updateSale');
+  track('changelog', entry.id, entry, p, 'updateSale/changelog');
   return updated;
 }
 
 export async function deleteSale(id) {
   await ensureListeners();
-  remove('sales', id, 'deleteSale');
+  const before = stores.sales.get(id) ?? null;
+  const entry = makeChangelogEntry({ entityId: id, action: 'delete', before, after: null });
+  const batch = writeBatch(_db);
+  batch.delete(docRef('sales', id));
+  batch.set(docRef('changelog', entry.id), entry);
+  stores.sales.delete(id);
+  stores.changelog.set(entry.id, entry);
+  const p = batch.commit();
+  track('sales', id, TOMBSTONE, p, 'deleteSale');
+  track('changelog', entry.id, entry, p, 'deleteSale/changelog');
 }
 
 export async function getSalesByDate(key) {
@@ -266,6 +307,13 @@ export async function closeOuting(id) {
   const outing = await getOuting(id);
   if (!outing) return null;
   return updateOuting({ ...outing, status: 'closed', closedAt: new Date().toISOString() });
+}
+
+// ---- changelog 查詢 ----
+
+// 回傳全部 changelog 依 at 倒序(最新在前)。
+export async function getChangelog() {
+  return (await all('changelog')).sort((a, b) => b.at.localeCompare(a.at));
 }
 
 // ---- 備份 / 還原(完整資料,供換機/防遺失)----

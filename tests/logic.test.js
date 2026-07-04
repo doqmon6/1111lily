@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   computeTotal, summarizeDay, dateKey, formatMoney,
   outingRevenue, sumFixedCosts, soldCost, outingNet, productAggregate, ranking,
-  toSalesCSV, toProductSummaryCSV,
+  toSalesCSV, toProductSummaryCSV, saleChangeSummary,
 } from '../js/logic.js';
 
 describe('computeTotal', () => {
@@ -163,6 +163,62 @@ describe('ranking', () => {
       { productId: 'C', sold: 0, revenue: 0 },
     ];
     expect(ranking(agg).map((r) => r.productId)).toEqual(['B', 'A', 'C']);
+  });
+});
+
+describe('saleChangeSummary', () => {
+  const base = {
+    total: 100,
+    type: 'sale',
+    paymentMethod: 'cash',
+    items: [{ name: '手鍊', qty: 2 }, { name: '耳環', qty: 1 }],
+  };
+
+  it('無變更回空陣列', () => {
+    expect(saleChangeSummary(base, { ...base })).toEqual([]);
+  });
+
+  it('create(before=null)回空陣列', () => {
+    expect(saleChangeSummary(null, base)).toEqual([]);
+  });
+
+  it('delete(after=null)回空陣列', () => {
+    expect(saleChangeSummary(base, null)).toEqual([]);
+  });
+
+  it('改 total:描述含金額前後', () => {
+    const changes = saleChangeSummary(base, { ...base, total: 80 });
+    expect(changes).toHaveLength(1);
+    expect(changes[0]).toContain('$100');
+    expect(changes[0]).toContain('$80');
+  });
+
+  it('改 type:描述含類型標籤', () => {
+    const changes = saleChangeSummary(base, { ...base, type: 'gift' });
+    expect(changes).toHaveLength(1);
+    expect(changes[0]).toContain('正常銷售');
+    expect(changes[0]).toContain('贈送');
+  });
+
+  it('改 paymentMethod:描述含付款標籤', () => {
+    const changes = saleChangeSummary(base, { ...base, paymentMethod: 'transfer' });
+    expect(changes).toHaveLength(1);
+    expect(changes[0]).toContain('現金');
+    expect(changes[0]).toContain('轉帳');
+  });
+
+  it('改 items:描述含明細前後', () => {
+    const after = { ...base, items: [{ name: '手鍊', qty: 1 }] };
+    const changes = saleChangeSummary(base, after);
+    expect(changes).toHaveLength(1);
+    expect(changes[0]).toContain('手鍊×2');
+    expect(changes[0]).toContain('手鍊×1');
+  });
+
+  it('同時改多欄:回傳多筆描述', () => {
+    const after = { ...base, total: 80, type: 'gift', paymentMethod: 'transfer' };
+    const changes = saleChangeSummary(base, after);
+    expect(changes.length).toBeGreaterThanOrEqual(3);
   });
 });
 

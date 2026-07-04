@@ -8,6 +8,7 @@ import {
 import { toSalesCSV, toProductSummaryCSV, productAggregate, ranking, dateKey } from '../logic.js';
 import { el } from './dom.js';
 import { signOutUser } from '../auth.js';
+import { renderHistoryCard } from './history.js';
 
 const LAST_BACKUP_KEY = 'market-sales:lastBackupAt';
 
@@ -40,6 +41,8 @@ export async function init(viewEl) {
       el('label', { class: 'field' }, '從備份還原(合併上傳到雲端,不會刪除既有資料)', restoreInput),
       el('p', { id: 'export-msg', class: 'msg', hidden: true }),
     ),
+
+    renderHistoryCard(),
 
     el('div', { class: 'card' },
       el('button', {
