@@ -8,3 +8,4 @@ claude-code-workflow-config-windows-2026-05-29/
 Thumbs.db
 .tools/
 *-debug.log
+.firebase/
