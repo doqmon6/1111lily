@@ -6,3 +6,4 @@ claude-code-workflow-config-windows-2026-05-29/
 *.local
 .DS_Store
 Thumbs.db
+.tools/
