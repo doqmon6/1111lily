@@ -1,4 +1,11 @@
 import { test, expect } from '@playwright/test';
+import { gotoAndLogin, clearFirestore, clearAuthAccounts } from './helpers.js';
+
+test.beforeEach(async ({ page }) => {
+  await clearFirestore();
+  await clearAuthAccounts();
+  await gotoAndLogin(page);
+});
 
 async function addProduct(page, name, price, cost) {
   await page.locator('.tab[data-target="products"]').click();
@@ -33,7 +40,6 @@ const revenueStat = (page) => page.locator('#view-outing .stat', { hasText: '收
 const netStat = (page) => page.locator('#view-outing .stat', { hasText: '淨額' });
 
 test('尚未開始場次時無法結帳', async ({ page }) => {
-  await page.goto('/index.html');
   await addProduct(page, '貼紙', 30);
   await sell(page, '貼紙', 1);
   await page.click('#checkout-btn');
@@ -41,7 +47,6 @@ test('尚未開始場次時無法結帳', async ({ page }) => {
 });
 
 test('開始場次後記銷售,場次收入正確', async ({ page }) => {
-  await page.goto('/index.html');
   await addProduct(page, '明信片', 20, 8);
   await startOuting(page, '玩具展');
   await sell(page, '明信片', 2);
@@ -54,7 +59,6 @@ test('開始場次後記銷售,場次收入正確', async ({ page }) => {
 });
 
 test('帶貨剩餘:帶30,賣5+贈送2 → 賣7剩23,收入只算100', async ({ page }) => {
-  await page.goto('/index.html');
   await addProduct(page, '明信片', 20, 8);
   await startOuting(page, '松菸', { bring: { 明信片: 30 } });
 
@@ -74,7 +78,6 @@ test('帶貨剩餘:帶30,賣5+贈送2 → 賣7剩23,收入只算100', async ({ p
 });
 
 test('淨額 = 收入 − 出貨成本 − 固定成本', async ({ page }) => {
-  await page.goto('/index.html');
   await addProduct(page, '手鍊', 100, 40);
   await startOuting(page, '玩具展', { fixed: { 攤租: 500 } });
   await sell(page, '手鍊', 10);
@@ -86,7 +89,6 @@ test('淨額 = 收入 − 出貨成本 − 固定成本', async ({ page }) => {
 });
 
 test('關閉場次後無法再記銷售', async ({ page }) => {
-  await page.goto('/index.html');
   await addProduct(page, '貼紙', 30);
   await startOuting(page, '一日場');
   await page.locator('.tab[data-target="outing"]').click();
@@ -98,7 +100,6 @@ test('關閉場次後無法再記銷售', async ({ page }) => {
 });
 
 test('停售已帶貨商品後編輯場次,帶貨量不遺失', async ({ page }) => {
-  await page.goto('/index.html');
   await addProduct(page, '絕版小卡', 50);
   await startOuting(page, '玩具展', { bring: { 絕版小卡: 20 } });
 
@@ -115,7 +116,6 @@ test('停售已帶貨商品後編輯場次,帶貨量不遺失', async ({ page })
 });
 
 test('編輯一筆改類型為贈送,收入不再計入', async ({ page }) => {
-  await page.goto('/index.html');
   await addProduct(page, '耳環', 150);
   await startOuting(page, '松菸');
   await sell(page, '耳環', 1);
@@ -130,7 +130,6 @@ test('編輯一筆改類型為贈送,收入不再計入', async ({ page }) => {
 });
 
 test('刪除一筆後從明細消失', async ({ page }) => {
-  await page.goto('/index.html');
   await addProduct(page, '貼紙', 30);
   await startOuting(page, '一日場');
   await sell(page, '貼紙', 1);

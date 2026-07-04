@@ -1,7 +1,13 @@
 import { test, expect } from '@playwright/test';
+import { gotoAndLogin, clearFirestore, clearAuthAccounts } from './helpers.js';
+
+test.beforeEach(async ({ page }) => {
+  await clearFirestore();
+  await clearAuthAccounts();
+  await gotoAndLogin(page);
+});
 
 async function gotoProducts(page) {
-  await page.goto('/index.html');
   await page.locator('.tab[data-target="products"]').click();
   await expect(page.locator('#product-form')).toBeVisible();
 }
@@ -14,7 +20,10 @@ test('新增商品並在重載後仍存在', async ({ page }) => {
   await expect(page.locator('#product-list')).toContainText('手鍊');
   await expect(page.locator('#product-list')).toContainText('$150');
 
-  await page.reload();
+  // 重載:帶 ?emu=1 確保 emulator 模式,等待 app 主介面出現(auth session 存活或重新登入)
+  await page.goto('/index.html?emu=1');
+  // emulator 模式下 auth session 以 localStorage 持久,重載後 onAuth 仍返回登入狀態
+  await page.waitForSelector('#app:not([hidden])', { timeout: 15000 });
   await page.locator('.tab[data-target="products"]').click();
   await expect(page.locator('#product-list')).toContainText('手鍊');
 });

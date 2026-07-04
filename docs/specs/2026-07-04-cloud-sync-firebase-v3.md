@@ -335,8 +335,8 @@ service cloud.firestore {
 2. **開 Authentication**:啟用 **Google** 登入提供者;把 Firebase Hosting 網域加入授權網域。
 3. **開 Firestore**:建立 Cloud Firestore(正式模式)。
 4. **取得創作者 UID**:創作者先在部署好的 App 用 Google 登入一次 → Console → Authentication → 該使用者 → 複製 **User UID**。
-5. **填 rules 並部署 rules + 索引**:把 `firestore.rules` 的 `FIXED_UID` 換成該 UID → `firebase deploy --only firestore`(同時部署 rules 與 `firestore.indexes.json` 的兩個複合索引——sales 的 `dateKey+createdAt`、`outingId+createdAt`;**正式環境查詢沒有索引會直接失敗,emulator 不強制,不可漏**)。部署前先跑 `npm run test:emulator` 確認綠燈。
-6. **設 App 端 Firebase config**:把專案的 web config(apiKey 等)填入 `js/firebase.js`。
+5. **填 rules 並部署**:把 `firestore.rules` 的 `FIXED_UID` 換成該 UID → `firebase deploy --only firestore`。部署前先跑 `npm run test:emulator` 確認綠燈。(D-18 架構後已無 server 端查詢,無需複合索引;`firestore.indexes.json` 為空。)
+6. **設 App 端 Firebase config 與 CREATOR_UID**:把專案的 web config(apiKey 等)填入 `js/firebase.js`,**並把同檔的 `CREATOR_UID` 從 `null` 改為創作者 UID**——留 null 上線時登入 gate 會 fail-closed 拒絕所有人(提示「尚未完成設定」),這是防漏填的設計,不是 bug。
 7. **部署 Hosting**:`firebase deploy --only hosting`(唯一主網址;**不碰 GitHub Pages / master**)。
 8. **設 Apps Script 鏡像**:在**創作者 Google 帳號**新增 Apps Script → 綁定目標試算表 → 貼 `doPost` 腳本(接 `text/plain` JSON、依首欄 id upsert 列、刪除標記)→ 部署為 Web App(執行身分=創作者、存取=任何人)→ 取得 URL 填入 `js/mirror.js` 的 `APPS_SCRIPT_URL`。
 9. **交接**(場次結束後):舊站匯出 JSON → 新站登入匯入 → 驗證筆數/報表一致 → 手機「加到主畫面」換新網址(見發布順序專章)。
@@ -365,6 +365,8 @@ service cloud.firestore {
 | D-15 | 遷移策略 | 單一路徑:舊站 JSON 匯出 → 新站匯入(upsert 冪等、不刪來源),工程師交接一次執行 | 同源自動上傳(需再部署舊站,與 D-14 退役矛盾;省一次手動的價值不敵雙部署/SW 風險) | 2026-07-04 使用者裁決 + 推導 |
 | D-16 | Sheets 鏡像語意 | 每筆 sale 一列、以 id upsert;刪除標「已刪除」列不消失;重試佇列存 id 取最新狀態 | append-only 只追加(編輯/刪除後表格殘留錯誤資料,違反需求 C);每商品一列(總金額重複、SUM 出錯) | 2026-07-04 使用者授權自行設計 |
 | D-17 | e2e auth 處理 | auth-mock + emulator Firestore;真 Google 登入 `[MANUAL]` | Playwright 跑真 OAuth(脆弱、依賴真帳號) | 2026-07-04 已確認 |
+| D-18 | 資料層讀取架構(取代 M1 step 4 的 server query 設計) | 長駐 collection onSnapshot + 記憶體 store + pending overlay;讀取本地過濾排序;store 變更自動重繪當前分頁(isBusy 守門) | 一次性 getDocs(persistentLocalCache 下不保證看到未 ack 本地寫入,e2e 實測炸;且電腦長開分頁永遠看不到手機新紀錄);await 寫入 ack(離線掛死 UI,違反需求 A) | 2026-07-04 實作期發現,main thread 裁決 |
+| D-19 | CREATOR_UID 未填語意 | fail-closed:正式環境 null = 拒絕所有登入(emulator 放行);rules FIXED_UID 為獨立第二防線 | fail-open(runbook 漏填時 gate 靜默失效) | 2026-07-04 review 修正 |
 
 ---
 

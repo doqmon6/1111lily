@@ -1,29 +1,144 @@
 // Firestore 資料層:商品(products)、銷售(sales)、場次(outings)倉儲。
 // 設計重點:銷售的 items 內存「品名/單價/成本快照」,商品日後改價或停售都不影響歷史對帳。
 // 資料路徑:users/{uid}/products|sales|outings  文件 id = 既有 uuid。
-// M1 階段 uid 用常數 'dev';M2 接真 Auth 後呼叫 setUserId(user.uid) 一行替換。
+//
+// ── 架構:長駐 listener + 記憶體 store(Firestore canonical 模式)──
+// 讀取不打一次性 server 查詢,而是每個 collection 掛長駐 onSnapshot,
+// 資料進記憶體 store,讀取函式從 store 過濾/排序。理由:
+// 1. read-your-write 確定性:一次性 getDocs 在 persistentLocalCache 下
+//    不保證看到尚未 ack 的本地寫入(實測);寫入時同步樂觀更新 store 徹底解決。
+// 2. 跨裝置即時:電腦分頁長開時,手機新記的帳由 listener 自動推進來。
+// 3. 離線:listener 直接吐本地快取(含 pending writes),不等網路。
+// 寫入採 latency compensation:打進本地快取即返回,不等伺服器 ack
+// (離線時 ack 永不到,await 會把 UI 掛死)。上雲進度由 M5 pending 提醒呈現。
+// 例外:importAll(遷移/還原)需確認真的上雲,維持 await 全部 ack。
 import { dateKey } from './logic.js';
 import { db } from './firebase.js';
 import {
-  doc, collection, setDoc, getDoc, getDocs,
-  updateDoc, deleteDoc, query, where, orderBy,
+  doc, collection, setDoc, deleteDoc, onSnapshot,
 } from 'firebase/firestore';
 
 // ---- uid 注入 ----
-// M2: 將 setUserId(user.uid) 替換此常數,之後所有讀寫自動走正確路徑。
-export const DEFAULT_UID = 'dev';
-let _uid = DEFAULT_UID;
-export function setUserId(uid) { _uid = uid; }
+// M2:登入後呼叫 setUserId(user.uid),所有讀寫走 users/{uid}/...。
+// 未設定前任何存取都大聲失敗(security review:避免悄悄寫進看似合理的假路徑)。
+let _uid = null;
+export function setUserId(uid) {
+  if (uid === _uid) return;
+  _uid = uid;
+  _teardown(); // 換人(理論上只發生在登入當下)→ 重建 listeners
+}
 
+// ---- db 注入(僅供測試 setup 使用)----
+let _db = db;
+export function _setDb(firestoreInstance) { _db = firestoreInstance; _teardown(); }
+
+function requireUid() {
+  if (!_uid) throw new Error('資料層尚未綁定使用者(setUserId 未呼叫)');
+  return _uid;
+}
 function col(name) {
-  return collection(db, 'users', _uid, name);
+  return collection(_db, 'users', requireUid(), name);
 }
 function docRef(name, id) {
-  return doc(db, 'users', _uid, name, id);
+  return doc(_db, 'users', requireUid(), name, id);
 }
 
-// 測試用 no-op:IndexedDB 版需要重設連線,Firestore 版無需處理。
-export function _closeDb() {}
+// ---- 長駐 listeners + store ----
+
+const COLLECTIONS = ['products', 'sales', 'outings'];
+const TOMBSTONE = Symbol('deleted');
+let stores = null;      // { products: Map<id,obj>, sales: Map, outings: Map }
+let pending = null;     // 同構;值為 { entity|TOMBSTONE, seq }:未 ack 的本地寫入 overlay
+let readyPromise = null;
+let unsubs = [];
+let writeSeq = 0;
+
+function _teardown() {
+  for (const u of unsubs) u();
+  unsubs = [];
+  stores = null;
+  pending = null;
+  readyPromise = null;
+}
+
+// 測試用:重設 listeners 與 store(如 emulator 清庫後,強制下次讀取重新同步)。
+export function _closeDb() { _teardown(); }
+
+// 快照重建後,把尚未 ack 的本地寫入疊回去:
+// 較舊的快照(還沒收到本地寫入 echo)不可以蓋掉較新的樂觀狀態。
+function applyPending(name) {
+  const m = stores[name];
+  for (const [id, p] of pending[name]) {
+    if (p.value === TOMBSTONE) m.delete(id);
+    else m.set(id, p.value);
+  }
+}
+
+// 資料變更通知:任一 collection 快照更新後呼叫(含遠端裝置的變更與本地 echo)。
+// app.js 用它讓「當前分頁」自動重繪 —— 電腦分頁長開時,手機新記的帳自動出現。
+const changeCallbacks = [];
+export function onDataChanged(cb) { changeCallbacks.push(cb); }
+function notifyChanged() { for (const cb of changeCallbacks) cb(); }
+
+function ensureListeners() {
+  if (readyPromise) return readyPromise;
+  stores = Object.fromEntries(COLLECTIONS.map((n) => [n, new Map()]));
+  pending = Object.fromEntries(COLLECTIONS.map((n) => [n, new Map()]));
+  readyPromise = Promise.all(COLLECTIONS.map((name) => new Promise((resolve) => {
+    const unsub = onSnapshot(col(name), (snap) => {
+      const m = stores[name];
+      m.clear();
+      for (const d of snap.docs) m.set(d.id, d.data());
+      applyPending(name);
+      resolve();
+      notifyChanged();
+    }, (err) => {
+      console.error(`Firestore 監聽失敗(${name})`, err);
+      resolve(); // 不讓讀取永久卡死;store 維持現狀
+    });
+    unsubs.push(unsub);
+  })));
+  return readyPromise;
+}
+
+async function all(name) {
+  await ensureListeners();
+  return [...stores[name].values()];
+}
+
+// 寫入:樂觀更新 store + pending overlay(同步、read-your-write 確定),
+// fire 到 Firestore 不等 ack;ack 到且無更新的同 id 寫入時,交回快照權威
+// (之後其他裝置的修改才不會被本地舊 overlay 遮蔽)。
+//
+// 以 ack 為 pending 清除時機的正確性論證(review 指名要求):
+// Firestore SDK 的快照一律含「當下 mutation queue」的 latency compensation,
+// 快照視圖單調前進、不會倒退 —— 一個「缺少某本地 mutation」的快照,
+// 不可能在該 mutation 已被 SDK 接受之後才送達。因此 ack(晚於 SDK 接受)
+// 之後到達的任何快照必已反映該寫入,清掉 pending 不會讓舊狀態復活。
+// pending 要防的是另一件事:mutation 尚未反映進「已在途快照」時,
+// 我們手動 store rebuild 與讀取之間的競態。
+function track(name, id, value, promise, ctx) {
+  const seq = ++writeSeq;
+  pending[name].set(id, { value, seq });
+  promise
+    .then(() => {
+      if (!pending) return; // teardown(換 uid/測試重置)後的 in-flight ack,無事可做
+      const cur = pending[name].get(id);
+      if (cur && cur.seq === seq) pending[name].delete(id);
+    })
+    .catch((err) => console.error(`Firestore 寫入失敗(${ctx})`, err));
+}
+
+function write(name, entity, ctx) {
+  stores[name].set(entity.id, entity);
+  track(name, entity.id, entity, setDoc(docRef(name, entity.id), entity), ctx);
+}
+function remove(name, id, ctx) {
+  stores[name].delete(id);
+  track(name, id, TOMBSTONE, deleteDoc(docRef(name, id)), ctx);
+}
+
+const byCreatedAt = (a, b) => a.createdAt.localeCompare(b.createdAt);
 
 // ---- products ----
 
@@ -36,18 +151,18 @@ export async function addProduct({ name, price, cost = 0 }) {
     active: true,
     createdAt: new Date().toISOString(),
   };
-  await setDoc(docRef('products', product.id), product);
+  await ensureListeners();
+  write('products', product, 'addProduct');
   return product;
 }
 
 export async function getProduct(id) {
-  const snap = await getDoc(docRef('products', id));
-  return snap.exists() ? snap.data() : undefined;
+  await ensureListeners();
+  return stores.products.get(id);
 }
 
 export async function getAllProducts() {
-  const snap = await getDocs(query(col('products'), orderBy('createdAt')));
-  return snap.docs.map((d) => d.data());
+  return (await all('products')).sort(byCreatedAt);
 }
 
 export async function getActiveProducts() {
@@ -56,15 +171,15 @@ export async function getActiveProducts() {
 }
 
 export async function updateProduct(product) {
-  await setDoc(docRef('products', product.id), product);
+  await ensureListeners();
+  write('products', product, 'updateProduct');
   return product;
 }
 
 export async function setProductActive(id, active) {
   const product = await getProduct(id);
   if (!product) return null;
-  product.active = active;
-  return updateProduct(product);
+  return updateProduct({ ...product, active });
 }
 
 // ---- sales ----
@@ -81,37 +196,33 @@ export async function addSale({ items, total, paymentMethod, createdAt, outingId
     createdAt: ts,
     dateKey: dateKey(new Date(ts)),
   };
-  await setDoc(docRef('sales', sale.id), sale);
+  await ensureListeners();
+  write('sales', sale, 'addSale');
   return sale;
 }
 
 export async function updateSale(sale) {
   const updated = { ...sale, dateKey: dateKey(new Date(sale.createdAt)) };
-  await setDoc(docRef('sales', updated.id), updated);
+  await ensureListeners();
+  write('sales', updated, 'updateSale');
   return updated;
 }
 
 export async function deleteSale(id) {
-  await deleteDoc(docRef('sales', id));
+  await ensureListeners();
+  remove('sales', id, 'deleteSale');
 }
 
 export async function getSalesByDate(key) {
-  const snap = await getDocs(
-    query(col('sales'), where('dateKey', '==', key), orderBy('createdAt'))
-  );
-  return snap.docs.map((d) => d.data());
+  return (await all('sales')).filter((s) => s.dateKey === key).sort(byCreatedAt);
 }
 
 export async function getSalesByOuting(outingId) {
-  const snap = await getDocs(
-    query(col('sales'), where('outingId', '==', outingId), orderBy('createdAt'))
-  );
-  return snap.docs.map((d) => d.data());
+  return (await all('sales')).filter((s) => s.outingId === outingId).sort(byCreatedAt);
 }
 
 export async function getAllSales() {
-  const snap = await getDocs(query(col('sales'), orderBy('createdAt')));
-  return snap.docs.map((d) => d.data());
+  return (await all('sales')).sort(byCreatedAt);
 }
 
 // ---- outings(場次)----
@@ -126,22 +237,23 @@ export async function addOuting({ name, fixedCosts = [], brought = [], status = 
     startedAt: new Date().toISOString(),
     closedAt: status === 'closed' ? new Date().toISOString() : null,
   };
-  await setDoc(docRef('outings', outing.id), outing);
+  await ensureListeners();
+  write('outings', outing, 'addOuting');
   return outing;
 }
 
 export async function getOuting(id) {
-  const snap = await getDoc(docRef('outings', id));
-  return snap.exists() ? snap.data() : undefined;
+  await ensureListeners();
+  return stores.outings.get(id);
 }
 
 export async function getAllOutings() {
-  const snap = await getDocs(query(col('outings'), orderBy('startedAt', 'desc')));
-  return snap.docs.map((d) => d.data());
+  return (await all('outings')).sort((a, b) => b.startedAt.localeCompare(a.startedAt));
 }
 
 export async function updateOuting(outing) {
-  await setDoc(docRef('outings', outing.id), outing);
+  await ensureListeners();
+  write('outings', outing, 'updateOuting');
   return outing;
 }
 
@@ -164,14 +276,23 @@ export async function exportAll() {
 }
 
 // 還原 = upsert:以既有 uuid 為文件 id set(),冪等,不清空既有雲端資料。
-// M3 遷移升級此語意,M1 已對齊。
+// 遷移/還原需確認資料真的上雲,故等全部 ack(在交接/換機時執行,當下有網路)。
 export async function importAll({ products = [], sales = [], outings = [] }) {
-  const writes = [
-    ...products.map((p) => setDoc(docRef('products', p.id), p)),
-    ...sales.map((s) => setDoc(docRef('sales', s.id), s)),
-    ...outings.map((o) => setDoc(docRef('outings', o.id), o)),
+  await ensureListeners();
+  const entries = [
+    ...products.map((p) => ['products', p]),
+    ...sales.map((s) => ['sales', s]),
+    ...outings.map((o) => ['outings', o]),
   ];
-  await Promise.all(writes);
+  // 與一般寫入走同一條 track() 路徑維護 pending overlay 不變式(review 修正),
+  // 另外保留原始 promise 供本函式 await 全部 ack(遷移/還原需確認真的上雲)。
+  const acks = entries.map(([name, entity]) => {
+    stores[name].set(entity.id, entity);
+    const p = setDoc(docRef(name, entity.id), entity);
+    track(name, entity.id, entity, p, 'importAll');
+    return p;
+  });
+  await Promise.all(acks);
 }
 
 const LEGACY_OUTING_NAME = '舊紀錄';

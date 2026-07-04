@@ -1,11 +1,13 @@
 // 匯出與備份:
 // - CSV(給人看 / Excel):場次明細、場次商品彙總、全部明細。
 // - JSON 備份檔(可還原):防手機遺失 / 換機。附「未備份提醒」。
+// - 登出按鈕(低調,尾部)。
 import {
   getAllSales, getSalesByOuting, getAllOutings, getOuting, getAllProducts, exportAll, importAll,
 } from '../db.js';
 import { toSalesCSV, toProductSummaryCSV, productAggregate, ranking, dateKey } from '../logic.js';
 import { el } from './dom.js';
+import { signOutUser } from '../auth.js';
 
 const LAST_BACKUP_KEY = 'market-sales:lastBackupAt';
 
@@ -37,6 +39,16 @@ export async function init(viewEl) {
       el('button', { class: 'btn primary', id: 'backup-btn', type: 'button', text: '備份全部資料(JSON,可還原)', onClick: backupJSON }),
       el('label', { class: 'field' }, '從備份還原(覆蓋目前資料)', restoreInput),
       el('p', { id: 'export-msg', class: 'msg', hidden: true }),
+    ),
+
+    el('div', { class: 'card' },
+      el('button', {
+        class: 'btn danger',
+        id: 'signout-btn',
+        type: 'button',
+        text: '登出',
+        onClick: () => signOutUser().catch((err) => console.error('登出失敗', err)),
+      }),
     ),
   );
   await render();
