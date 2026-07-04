@@ -1,4 +1,26 @@
 {
+  "hosting": {
+    "public": ".",
+    "ignore": [
+      "firebase.json",
+      "firestore.rules",
+      "firestore.indexes.json",
+      "**/.*",
+      "**/node_modules/**",
+      ".tools/**",
+      "tests/**",
+      "tools/**",
+      "docs/**",
+      "test-results/**",
+      "claude-code-workflow-config*/**",
+      "*.md",
+      "package.json",
+      "package-lock.json",
+      "playwright.config.js",
+      "vitest.config.js",
+      "*-debug.log"
+    ]
+  },
   "firestore": {
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"

@@ -1,6 +1,6 @@
 // App Shell 快取 + 離線。策略:network-first,離線時回退快取。
 // 注意:新增需離線可用的靜態檔時,請同步更新 ASSETS 並提高 CACHE 版本。
-const CACHE = 'market-sales-v10';
+const CACHE = 'market-sales-v11';
 const ASSETS = [
   './',
   './index.html',

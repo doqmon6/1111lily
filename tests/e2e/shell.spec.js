@@ -34,6 +34,17 @@ test('manifest 含必要欄位', async ({ page, request }) => {
   expect(m.icons.length).toBeGreaterThan(0);
 });
 
+test('匯出分頁有使用說明連結且 href 正確', async ({ page }) => {
+  await page.locator('.tab[data-target="export"]').click();
+  await expect(page.locator('#view-export')).toBeVisible();
+  const link = page.locator('a[href*="USER-GUIDE.md"]');
+  await expect(link).toBeVisible();
+  const href = await link.getAttribute('href');
+  expect(href).toBe('https://github.com/doqmon6/1111lily/blob/master/docs/USER-GUIDE.md');
+  const target = await link.getAttribute('target');
+  expect(target).toBe('_blank');
+});
+
 test('Service Worker 註冊且離線可重載', async ({ page, context }) => {
   await page.evaluate(() => navigator.serviceWorker.ready);
   // 線上再載一次,確保 app shell 進入快取且頁面受 SW 控制。

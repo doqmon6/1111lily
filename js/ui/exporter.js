@@ -44,6 +44,14 @@ export async function init(viewEl) {
     renderHistoryCard(),
 
     el('div', { class: 'card' },
+      el('p', { class: 'hint' },
+        el('a', {
+          href: 'https://github.com/doqmon6/1111lily/blob/master/docs/USER-GUIDE.md',
+          target: '_blank',
+          rel: 'noopener',
+          text: '使用說明',
+        }),
+      ),
       el('button', {
         class: 'btn danger',
         id: 'signout-btn',
