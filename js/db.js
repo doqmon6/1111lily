@@ -1,77 +1,53 @@
-// IndexedDB 資料層:商品(products)、銷售(sales)、場次(outings)倉儲。
+// Firestore 資料層:商品(products)、銷售(sales)、場次(outings)倉儲。
 // 設計重點:銷售的 items 內存「品名/單價/成本快照」,商品日後改價或停售都不影響歷史對帳。
+// 資料路徑:users/{uid}/products|sales|outings  文件 id = 既有 uuid。
+// M1 階段 uid 用常數 'dev';M2 接真 Auth 後呼叫 setUserId(user.uid) 一行替換。
 import { dateKey } from './logic.js';
+import { db } from './firebase.js';
+import {
+  doc, collection, setDoc, getDoc, getDocs,
+  updateDoc, deleteDoc, query, where, orderBy,
+} from 'firebase/firestore';
 
-const DB_NAME = 'market-sales-db';
-const DB_VERSION = 2;
+// ---- uid 注入 ----
+// M2: 將 setUserId(user.uid) 替換此常數,之後所有讀寫自動走正確路徑。
+export const DEFAULT_UID = 'dev';
+let _uid = DEFAULT_UID;
+export function setUserId(uid) { _uid = uid; }
 
-let dbPromise = null;
-
-export function openDB() {
-  if (dbPromise) return dbPromise;
-  dbPromise = new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      const tx = req.transaction; // versionchange 交易,用來改既有 store
-      if (!db.objectStoreNames.contains('products')) {
-        db.createObjectStore('products', { keyPath: 'id' });
-      }
-      if (!db.objectStoreNames.contains('sales')) {
-        const sales = db.createObjectStore('sales', { keyPath: 'id' });
-        sales.createIndex('dateKey', 'dateKey', { unique: false });
-        sales.createIndex('outingId', 'outingId', { unique: false });
-      } else {
-        // v1 → v2:既有 sales 補上 outingId 索引(舊紀錄無此鍵,不會進索引,待 backfill)。
-        const sales = tx.objectStore('sales');
-        if (!sales.indexNames.contains('outingId')) {
-          sales.createIndex('outingId', 'outingId', { unique: false });
-        }
-      }
-      if (!db.objectStoreNames.contains('outings')) {
-        db.createObjectStore('outings', { keyPath: 'id' });
-      }
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-  return dbPromise;
+function col(name) {
+  return collection(db, 'users', _uid, name);
+}
+function docRef(name, id) {
+  return doc(db, 'users', _uid, name, id);
 }
 
-// 測試用:清除快取連線,讓下一次 openDB 對新的 indexedDB 工廠重新開啟。
-export function _closeDb() {
-  dbPromise = null;
-}
-
-function store(db, name, mode) {
-  return db.transaction(name, mode).objectStore(name);
-}
-
-function reqToPromise(req) {
-  return new Promise((resolve, reject) => {
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
+// 測試用 no-op:IndexedDB 版需要重設連線,Firestore 版無需處理。
+export function _closeDb() {}
 
 // ---- products ----
 
 export async function addProduct({ name, price, cost = 0 }) {
-  const db = await openDB();
-  const product = { id: crypto.randomUUID(), name, price, cost, active: true, createdAt: new Date().toISOString() };
-  await reqToPromise(store(db, 'products', 'readwrite').add(product));
+  const product = {
+    id: crypto.randomUUID(),
+    name,
+    price,
+    cost,
+    active: true,
+    createdAt: new Date().toISOString(),
+  };
+  await setDoc(docRef('products', product.id), product);
   return product;
 }
 
 export async function getProduct(id) {
-  const db = await openDB();
-  return reqToPromise(store(db, 'products', 'readonly').get(id));
+  const snap = await getDoc(docRef('products', id));
+  return snap.exists() ? snap.data() : undefined;
 }
 
 export async function getAllProducts() {
-  const db = await openDB();
-  const all = await reqToPromise(store(db, 'products', 'readonly').getAll());
-  return all.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const snap = await getDocs(query(col('products'), orderBy('createdAt')));
+  return snap.docs.map((d) => d.data());
 }
 
 export async function getActiveProducts() {
@@ -80,8 +56,7 @@ export async function getActiveProducts() {
 }
 
 export async function updateProduct(product) {
-  const db = await openDB();
-  await reqToPromise(store(db, 'products', 'readwrite').put(product));
+  await setDoc(docRef('products', product.id), product);
   return product;
 }
 
@@ -95,7 +70,6 @@ export async function setProductActive(id, active) {
 // ---- sales ----
 
 export async function addSale({ items, total, paymentMethod, createdAt, outingId = null, type = 'sale' }) {
-  const db = await openDB();
   const ts = createdAt ?? new Date().toISOString();
   const sale = {
     id: crypto.randomUUID(),
@@ -107,46 +81,42 @@ export async function addSale({ items, total, paymentMethod, createdAt, outingId
     createdAt: ts,
     dateKey: dateKey(new Date(ts)),
   };
-  await reqToPromise(store(db, 'sales', 'readwrite').add(sale));
+  await setDoc(docRef('sales', sale.id), sale);
   return sale;
 }
 
 export async function updateSale(sale) {
-  const db = await openDB();
   const updated = { ...sale, dateKey: dateKey(new Date(sale.createdAt)) };
-  await reqToPromise(store(db, 'sales', 'readwrite').put(updated));
+  await setDoc(docRef('sales', updated.id), updated);
   return updated;
 }
 
 export async function deleteSale(id) {
-  const db = await openDB();
-  await reqToPromise(store(db, 'sales', 'readwrite').delete(id));
+  await deleteDoc(docRef('sales', id));
 }
 
 export async function getSalesByDate(key) {
-  const db = await openDB();
-  const index = store(db, 'sales', 'readonly').index('dateKey');
-  const list = await reqToPromise(index.getAll(IDBKeyRange.only(key)));
-  return list.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const snap = await getDocs(
+    query(col('sales'), where('dateKey', '==', key), orderBy('createdAt'))
+  );
+  return snap.docs.map((d) => d.data());
 }
 
 export async function getSalesByOuting(outingId) {
-  const db = await openDB();
-  const index = store(db, 'sales', 'readonly').index('outingId');
-  const list = await reqToPromise(index.getAll(IDBKeyRange.only(outingId)));
-  return list.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const snap = await getDocs(
+    query(col('sales'), where('outingId', '==', outingId), orderBy('createdAt'))
+  );
+  return snap.docs.map((d) => d.data());
 }
 
 export async function getAllSales() {
-  const db = await openDB();
-  const all = await reqToPromise(store(db, 'sales', 'readonly').getAll());
-  return all.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const snap = await getDocs(query(col('sales'), orderBy('createdAt')));
+  return snap.docs.map((d) => d.data());
 }
 
 // ---- outings(場次)----
 
 export async function addOuting({ name, fixedCosts = [], brought = [], status = 'open' }) {
-  const db = await openDB();
   const outing = {
     id: crypto.randomUUID(),
     name,
@@ -156,24 +126,22 @@ export async function addOuting({ name, fixedCosts = [], brought = [], status = 
     startedAt: new Date().toISOString(),
     closedAt: status === 'closed' ? new Date().toISOString() : null,
   };
-  await reqToPromise(store(db, 'outings', 'readwrite').add(outing));
+  await setDoc(docRef('outings', outing.id), outing);
   return outing;
 }
 
 export async function getOuting(id) {
-  const db = await openDB();
-  return reqToPromise(store(db, 'outings', 'readonly').get(id));
+  const snap = await getDoc(docRef('outings', id));
+  return snap.exists() ? snap.data() : undefined;
 }
 
 export async function getAllOutings() {
-  const db = await openDB();
-  const all = await reqToPromise(store(db, 'outings', 'readonly').getAll());
-  return all.sort((a, b) => b.startedAt.localeCompare(a.startedAt));
+  const snap = await getDocs(query(col('outings'), orderBy('startedAt', 'desc')));
+  return snap.docs.map((d) => d.data());
 }
 
 export async function updateOuting(outing) {
-  const db = await openDB();
-  await reqToPromise(store(db, 'outings', 'readwrite').put(outing));
+  await setDoc(docRef('outings', outing.id), outing);
   return outing;
 }
 
@@ -195,21 +163,15 @@ export async function exportAll() {
   return { products, sales, outings };
 }
 
-// 還原 = 以備份覆蓋:單一交易內清空三個 store 再寫入,確保原子性。
+// 還原 = upsert:以既有 uuid 為文件 id set(),冪等,不清空既有雲端資料。
+// M3 遷移升級此語意,M1 已對齊。
 export async function importAll({ products = [], sales = [], outings = [] }) {
-  const db = await openDB();
-  await new Promise((resolve, reject) => {
-    const tx = db.transaction(['products', 'sales', 'outings'], 'readwrite');
-    tx.oncomplete = resolve;
-    tx.onerror = () => reject(tx.error);
-    const ps = tx.objectStore('products');
-    const ss = tx.objectStore('sales');
-    const os = tx.objectStore('outings');
-    ps.clear(); ss.clear(); os.clear();
-    for (const p of products) ps.put(p);
-    for (const s of sales) ss.put(s);
-    for (const o of outings) os.put(o);
-  });
+  const writes = [
+    ...products.map((p) => setDoc(docRef('products', p.id), p)),
+    ...sales.map((s) => setDoc(docRef('sales', s.id), s)),
+    ...outings.map((o) => setDoc(docRef('outings', o.id), o)),
+  ];
+  await Promise.all(writes);
 }
 
 const LEGACY_OUTING_NAME = '舊紀錄';

@@ -1,17 +1,25 @@
-import 'fake-indexeddb/auto';
-import { IDBFactory } from 'fake-indexeddb';
+// db.test.js — 連 Firestore Emulator。
+// 執行方式:npm run test:emulator(emulators:exec 自動注入 FIRESTORE_EMULATOR_HOST)。
+// 每個 test 前透過 emulator REST API 清空資料,確保隔離。
 import { describe, it, expect, beforeEach } from 'vitest';
 import { dateKey } from '../js/logic.js';
 import {
   addProduct, getAllProducts, getActiveProducts, setProductActive, getProduct, updateProduct,
   addSale, getSalesByDate, getSalesByOuting, getAllSales, updateSale, deleteSale, _closeDb,
   addOuting, getAllOutings, getOpenOuting, closeOuting, ensureMigrated,
+  setUserId,
 } from '../js/db.js';
 
-beforeEach(() => {
-  // 每個測試一個全新的記憶體資料庫,確保隔離。
-  globalThis.indexedDB = new IDBFactory();
-  _closeDb();
+const EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? 'localhost:8080';
+const PROJECT_ID = 'demo-market-sales';
+const CLEAR_URL = `http://${EMULATOR_HOST}/emulator/v1/projects/${PROJECT_ID}/databases/(default)/documents`;
+
+beforeEach(async () => {
+  // 清空 emulator 所有資料,確保每個 test 從乾淨狀態開始。
+  await fetch(CLEAR_URL, { method: 'DELETE' });
+  _closeDb(); // no-op in Firestore version; kept for API compatibility
+  // 每個 test 重設 uid,避免 test 間汙染(uid 改變時 Firestore 走不同路徑)
+  setUserId('dev');
 });
 
 describe('products', () => {
@@ -116,34 +124,13 @@ describe('outings', () => {
 });
 
 describe('v1 → v2 遷移', () => {
-  function openV1() {
-    return new Promise((resolve, reject) => {
-      const req = indexedDB.open('market-sales-db', 1);
-      req.onupgradeneeded = () => {
-        const db = req.result;
-        db.createObjectStore('products', { keyPath: 'id' });
-        const sales = db.createObjectStore('sales', { keyPath: 'id' });
-        sales.createIndex('dateKey', 'dateKey', { unique: false });
-      };
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
-    });
-  }
-
   it('舊銷售(無 outingId)升級後保留,並歸入已關閉的「舊紀錄」場次', async () => {
-    const v1 = await openV1();
-    await new Promise((resolve, reject) => {
-      const tx = v1.transaction('sales', 'readwrite');
-      tx.objectStore('sales').add({
-        id: 'old-1',
-        items: [{ productId: 'p', name: '舊商品', price: 100, qty: 1 }],
-        total: 100, paymentMethod: 'cash',
-        createdAt: '2026-05-01T01:00:00.000Z', dateKey: '2026-05-01',
-      });
-      tx.oncomplete = resolve;
-      tx.onerror = () => reject(tx.error);
+    // Firestore 版:直接以 addSale 寫入無 outingId 的銷售模擬舊資料
+    await addSale({
+      items: [{ productId: 'p', name: '舊商品', price: 100, qty: 1 }],
+      total: 100, paymentMethod: 'cash',
+      createdAt: '2026-05-01T01:00:00.000Z',
     });
-    v1.close();
 
     const legacy = await ensureMigrated();
     expect(legacy.name).toBe('舊紀錄');
@@ -151,7 +138,6 @@ describe('v1 → v2 遷移', () => {
 
     const all = await getAllSales();
     expect(all).toHaveLength(1);
-    expect(all[0].id).toBe('old-1');
     expect(all[0].total).toBe(100);
     expect(all[0].outingId).toBe(legacy.id);
 

@@ -335,7 +335,7 @@ service cloud.firestore {
 2. **開 Authentication**:啟用 **Google** 登入提供者;把 Firebase Hosting 網域加入授權網域。
 3. **開 Firestore**:建立 Cloud Firestore(正式模式)。
 4. **取得創作者 UID**:創作者先在部署好的 App 用 Google 登入一次 → Console → Authentication → 該使用者 → 複製 **User UID**。
-5. **填 rules**:把 `firestore.rules` 的 `FIXED_UID` 換成該 UID → `firebase deploy --only firestore:rules`(或 Console 貼上)。**部署前先跑 `npm run test:emulator` 確認 rules 綠燈**。
+5. **填 rules 並部署 rules + 索引**:把 `firestore.rules` 的 `FIXED_UID` 換成該 UID → `firebase deploy --only firestore`(同時部署 rules 與 `firestore.indexes.json` 的兩個複合索引——sales 的 `dateKey+createdAt`、`outingId+createdAt`;**正式環境查詢沒有索引會直接失敗,emulator 不強制,不可漏**)。部署前先跑 `npm run test:emulator` 確認綠燈。
 6. **設 App 端 Firebase config**:把專案的 web config(apiKey 等)填入 `js/firebase.js`。
 7. **部署 Hosting**:`firebase deploy --only hosting`(唯一主網址;**不碰 GitHub Pages / master**)。
 8. **設 Apps Script 鏡像**:在**創作者 Google 帳號**新增 Apps Script → 綁定目標試算表 → 貼 `doPost` 腳本(接 `text/plain` JSON、依首欄 id upsert 列、刪除標記)→ 部署為 Web App(執行身分=創作者、存取=任何人)→ 取得 URL 填入 `js/mirror.js` 的 `APPS_SCRIPT_URL`。

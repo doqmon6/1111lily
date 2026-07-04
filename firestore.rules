@@ -1,0 +1,10 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // TODO M2: 鎖 UID — 把 FIXED_UID 換成創作者的 Firebase Auth UID
+    // M1 階段全開放,供 emulator 測試
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}

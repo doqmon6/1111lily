@@ -7,3 +7,4 @@ claude-code-workflow-config-windows-2026-05-29/
 .DS_Store
 Thumbs.db
 .tools/
+*-debug.log
