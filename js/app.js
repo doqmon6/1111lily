@@ -9,6 +9,7 @@ import * as exporter from './ui/exporter.js';
 import { ensureMigrated, setUserId, onDataChanged, _closeDb } from './db.js';
 import { signInWithGoogle, signOutUser, onAuth } from './auth.js';
 import { CREATOR_UID, isEmulatorMode } from './firebase.js';
+import { initMirror } from './mirror.js';
 
 const TITLES = {
   sale: '記銷售',
@@ -157,6 +158,7 @@ onAuth(async (user) => {
     console.error('資料遷移失敗', err);
   }
 
+  initMirror();
   showApp();
   // 確保 initNav 只跑一次
   if (!initialized.size) {

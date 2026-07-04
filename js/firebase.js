@@ -73,4 +73,8 @@ if (isNodeEmulator) {
 // e2e / 開發用 emulator 模式旗標(app.js 的 fail-closed gate 依此放行 null CREATOR_UID)
 export const isEmulatorMode = isBrowserEmu || isNodeEmulator;
 
+// M6 Sheets 鏡像端點。runbook 部署時填入 Apps Script Web App URL。
+// null = 鏡像停用;mirror.js 讀此值,安靜 no-op。
+export const APPS_SCRIPT_URL = null;
+
 export { app, db };

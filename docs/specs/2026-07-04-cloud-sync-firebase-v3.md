@@ -338,7 +338,7 @@ service cloud.firestore {
 5. **填 rules 並部署**:把 `firestore.rules` 的 `FIXED_UID` 換成該 UID → `firebase deploy --only firestore`。部署前先跑 `npm run test:emulator` 確認綠燈。(D-18 架構後已無 server 端查詢,無需複合索引;`firestore.indexes.json` 為空。)
 6. **設 App 端 Firebase config 與 CREATOR_UID**:把專案的 web config(apiKey 等)填入 `js/firebase.js`,**並把同檔的 `CREATOR_UID` 從 `null` 改為創作者 UID**——留 null 上線時登入 gate 會 fail-closed 拒絕所有人(提示「尚未完成設定」),這是防漏填的設計,不是 bug。
 7. **部署 Hosting**:`firebase deploy --only hosting`(唯一主網址;**不碰 GitHub Pages / master**)。
-8. **設 Apps Script 鏡像**:在**創作者 Google 帳號**新增 Apps Script → 綁定目標試算表 → 貼 `doPost` 腳本(接 `text/plain` JSON、依首欄 id upsert 列、刪除標記)→ 部署為 Web App(執行身分=創作者、存取=任何人)→ 取得 URL 填入 `js/mirror.js` 的 `APPS_SCRIPT_URL`。
+8. **設 Apps Script 鏡像**:在**創作者 Google 帳號**新增 Apps Script → 綁定目標試算表 → 貼 `doPost` 腳本(接 `text/plain` JSON、依首欄 id upsert 列、刪除標記)→ 部署為 Web App(執行身分=創作者、存取=任何人)→ 取得 URL 填入 `js/firebase.js` 的 `APPS_SCRIPT_URL`(腳本本體在 `tools/apps-script-mirror.gs`)。
 9. **交接**(場次結束後):舊站匯出 JSON → 新站登入匯入 → 驗證筆數/報表一致 → 手機「加到主畫面」換新網址(見發布順序專章)。
 10. **驗收清單**:登入成功、記一筆同步、另一裝置可見、Sheet 出現列(編輯會更新、刪除有標記)、rules 擋他人、匯入筆數一致、`[MANUAL]` AC 逐項打勾。
 

@@ -82,6 +82,19 @@ const changeCallbacks = [];
 export function onDataChanged(cb) { changeCallbacks.push(cb); }
 function notifyChanged() { for (const cb of changeCallbacks) cb(); }
 
+// sale 寫入通知:M6 Sheets 鏡像用。
+// 觸發時機:addSale/updateSale/deleteSale 的「樂觀寫入當下」(同步),
+// 不綁 commit ack —— 離線記帳後關 App 的場景,ack 不會在本 session 發生,
+// 綁 ack 會讓該筆永久漏入鏡像佇列(佇列在 localStorage,入列即持久)。
+// 不 await callbacks,不影響主資料流(fire-and-forget)。
+const saleWrittenCallbacks = [];
+export function onSaleWritten(cb) { saleWrittenCallbacks.push(cb); }
+function notifySaleWritten(sale, deleted) {
+  for (const cb of saleWrittenCallbacks) {
+    try { cb({ sale, deleted }); } catch (e) { console.error('onSaleWritten callback 錯誤', e); }
+  }
+}
+
 function ensureListeners() {
   if (readyPromise) return readyPromise;
   stores = Object.fromEntries(COLLECTIONS.map((n) => [n, new Map()]));
@@ -239,6 +252,10 @@ export async function addSale({ items, total, paymentMethod, createdAt, outingId
   const p = batch.commit();
   track('sales', sale.id, sale, p, 'addSale');
   track('changelog', entry.id, entry, p, 'addSale/changelog');
+  // 鏡像入列走「樂觀寫入當下」而非 commit ack:離線記帳後關 App,ack 永遠不會在
+  // 本 session 發生,綁 ack 會讓該筆永久漏鏡像(review BLOCKER)。佇列本身持久
+  // (localStorage)且重送取最新狀態,提早入列無副作用。
+  notifySaleWritten(sale, false);
   return sale;
 }
 
@@ -255,6 +272,7 @@ export async function updateSale(sale) {
   const p = batch.commit();
   track('sales', updated.id, updated, p, 'updateSale');
   track('changelog', entry.id, entry, p, 'updateSale/changelog');
+  notifySaleWritten(updated, false); // 樂觀當下入列(見 addSale 註解)
   return updated;
 }
 
@@ -270,6 +288,12 @@ export async function deleteSale(id) {
   const p = batch.commit();
   track('sales', id, TOMBSTONE, p, 'deleteSale');
   track('changelog', entry.id, entry, p, 'deleteSale/changelog');
+  if (before) notifySaleWritten(before, true); // 樂觀當下入列;不存在的 id 不通知(防空 id 入列)
+}
+
+export async function getSale(id) {
+  await ensureListeners();
+  return stores.sales.get(id) ?? null;
 }
 
 export async function getSalesByDate(key) {
