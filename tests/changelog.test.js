@@ -5,6 +5,7 @@ import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import { getAuth, signInWithEmailAndPassword } from 'firebase/auth';
 import { waitForPendingWrites } from 'firebase/firestore';
 import { app, db } from '../js/firebase.js';
+import { RULES_UID } from './rules-uid.js';
 import {
   addSale, updateSale, deleteSale, getAllSales, getAllOutings, getAllProducts,
   getChangelog, setUserId,
@@ -28,13 +29,13 @@ beforeAll(async () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer owner' },
       body: JSON.stringify({
-        localId: 'FIXED_UID', email: 'changelog@test.local', password: 'test-password-123',
+        localId: RULES_UID, email: 'changelog@test.local', password: 'test-password-123',
         returnSecureToken: true,
       }),
     },
   );
   await signInWithEmailAndPassword(auth, 'changelog@test.local', 'test-password-123');
-  setUserId('FIXED_UID');
+  setUserId(RULES_UID);
 });
 
 beforeEach(async () => {

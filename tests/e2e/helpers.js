@@ -1,5 +1,6 @@
 // e2e 共用 helper:emulator 模式登入 + 資料隔離清除。
 // 所有 spec 在 emulator 模式下跑:URL 帶 ?emu=1,Auth emulator 完成登入。
+import { RULES_UID } from '../rules-uid.js';
 
 const PROJECT_ID = 'demo-market-sales';
 const FIRESTORE_CLEAR_URL = `http://localhost:8080/emulator/v1/projects/${PROJECT_ID}/databases/(default)/documents`;
@@ -33,7 +34,7 @@ async function ensureCreatorAccount() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer owner' },
       body: JSON.stringify({
-        localId: 'FIXED_UID',
+        localId: RULES_UID,
         email: E2E_EMAIL,
         password: E2E_PASSWORD,
         returnSecureToken: true,

@@ -11,6 +11,7 @@ import {
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { RULES_UID } from './rules-uid.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -22,7 +23,8 @@ const PROJECT_ID = 'demo-market-sales-rules';
 
 // 讀取 firestore.rules 並把 FIXED_UID 佔位換成測試 UID
 const rawRules = fs.readFileSync(path.resolve(__dirname, '..', 'firestore.rules'), 'utf8');
-const rules = rawRules.replaceAll('FIXED_UID', CREATOR_UID);
+// 以動態抽取的 UID 字面值替換(佔位或真值都可,見 rules-uid.js)
+const rules = rawRules.replaceAll(RULES_UID, CREATOR_UID);
 
 let testEnv;
 

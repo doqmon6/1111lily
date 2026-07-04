@@ -8,6 +8,7 @@ import { getAuth, signInWithEmailAndPassword } from 'firebase/auth';
 import { waitForPendingWrites } from 'firebase/firestore';
 import { app, db } from '../js/firebase.js';
 import { dateKey } from '../js/logic.js';
+import { RULES_UID } from './rules-uid.js';
 import {
   addProduct, getAllProducts, getActiveProducts, setProductActive, getProduct, updateProduct,
   addSale, getSalesByDate, getSalesByOuting, getAllSales, updateSale, deleteSale, _closeDb,
@@ -24,7 +25,7 @@ const AUTH_CLEAR_URL = `http://${AUTH_EMULATOR_HOST}/emulator/v1/projects/${PROJ
 // Auth emulator 中,Bearer token 只要非空字串即被視為 admin mode
 // 這讓 /v1/projects/{id}/accounts POST 允許指定 localId
 const FAKE_ADMIN_BEARER = 'owner';
-const DB_TEST_UID = 'FIXED_UID';
+const DB_TEST_UID = RULES_UID;
 const DB_TEST_EMAIL = 'dbtest@test.local';
 const DB_TEST_PASSWORD = 'test-password-123';
 
