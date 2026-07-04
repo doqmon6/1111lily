@@ -28,9 +28,7 @@ export function setUserId(uid) {
   _teardown(); // 換人(理論上只發生在登入當下)→ 重建 listeners
 }
 
-// ---- db 注入(僅供測試 setup 使用)----
-let _db = db;
-export function _setDb(firestoreInstance) { _db = firestoreInstance; _teardown(); }
+const _db = db;
 
 function requireUid() {
   if (!_uid) throw new Error('資料層尚未綁定使用者(setUserId 未呼叫)');
