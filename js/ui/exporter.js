@@ -37,7 +37,7 @@ export async function init(viewEl) {
       el('button', { class: 'btn', id: 'export-all-btn', type: 'button', text: '匯出全部明細 CSV', onClick: exportAllDetail }),
       el('p', { class: 'hint', text: 'CSV 是給你看的報表;要能換手機/還原,請用下面的 JSON 備份。' }),
       el('button', { class: 'btn primary', id: 'backup-btn', type: 'button', text: '備份全部資料(JSON,可還原)', onClick: backupJSON }),
-      el('label', { class: 'field' }, '從備份還原(覆蓋目前資料)', restoreInput),
+      el('label', { class: 'field' }, '從備份還原(合併上傳到雲端,不會刪除既有資料)', restoreInput),
       el('p', { id: 'export-msg', class: 'msg', hidden: true }),
     ),
 
@@ -119,12 +119,18 @@ async function onRestore(e) {
   } catch {
     return showMsg('檔案格式錯誤,無法讀取', true);
   }
-  if (!data || !Array.isArray(data.products) || !Array.isArray(data.sales)) {
+  if (!data || !Array.isArray(data.products) || !Array.isArray(data.sales)
+    || (data.outings != null && !Array.isArray(data.outings))) {
     return showMsg('這不是有效的備份檔', true);
   }
-  if (!window.confirm('還原會以備份檔「覆蓋」目前手機上的所有資料,確定?')) return;
-  await importAll({ products: data.products, sales: data.sales, outings: data.outings ?? [] });
-  showMsg(`已還原:商品 ${data.products.length}、銷售 ${data.sales.length}、場次 ${(data.outings ?? []).length}`, false);
+  if (!window.confirm('會把備份檔的資料合併上傳到雲端(相同紀錄以備份檔為準,不會刪除其他資料),確定?')) return;
+  try {
+    await importAll({ products: data.products, sales: data.sales, outings: data.outings ?? [] });
+  } catch (err) {
+    console.error('備份匯入失敗', err);
+    return showMsg('匯入失敗(請確認網路後重試;備份檔未受影響)', true);
+  }
+  showMsg(`已還原:商品 ${data.products.length}、銷售 ${data.sales.length}、場次 ${(data.outings ?? []).length}(已上傳雲端)`, false);
 }
 
 // ---- 未備份提醒 ----

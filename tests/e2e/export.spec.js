@@ -85,6 +85,18 @@ test('未備份提醒:有未備份顯示警告,備份後轉為已備份', async 
   await expect(page.locator('#backup-reminder')).toContainText('已備份');
 });
 
+test('壞檔匯入:明確錯誤訊息、不寫入任何資料', async ({ page }) => {
+  await page.locator('.tab[data-target="export"]').click();
+  await page.setInputFiles('#restore-file', {
+    name: 'garbage.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from('{"not":"a backup"}'),
+  });
+  await expect(page.locator('#export-msg')).toContainText('不是有效的備份檔');
+  await page.locator('.tab[data-target="products"]').click();
+  await expect(page.locator('#product-list')).toContainText('還沒有商品');
+});
+
 test('JSON 備份 → 清空 Firestore → 還原,資料完整回來', async ({ page }) => {
   await addProduct(page, '手鍊', 100, 40);
   await startOuting(page, '玩具展');
