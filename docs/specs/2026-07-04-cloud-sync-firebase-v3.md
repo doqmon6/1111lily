@@ -1,7 +1,7 @@
 # 雲端同步 v3 — Firebase(Auth + Firestore 離線持久化)+ Sheets 鏡像 + 資料遷移
 
 - 日期:2026-07-04
-- 狀態:DRAFT(待使用者審查後才進實作)
+- 狀態:已實作、已部署、驗收通過(2026-07-04;正式站 https://market-sales-lily.web.app,專案 market-sales-lily 於創作者帳號名下;舊站無資料免遷移,GitHub Pages 退役)
 - 作者:spec-architect(reviewed by: larry)
 - 前身:`2026-05-30-market-sales-pwa-v2.md`(v2 場次/成本/帶貨/特例資料模型與報表)
 - 來源:兩輪 critical-discussion 訪談收斂(錨定需求 A–F、已決策 1–5,見下)

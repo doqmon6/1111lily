@@ -14,23 +14,21 @@ import {
 } from 'firebase/firestore';
 import { getAuth, connectAuthEmulator } from 'firebase/auth';
 
-// TODO M7: 換成真實 Firebase 專案 config(apiKey 等)
+// 正式專案 config(2026-07-04 runbook 填入;apiKey 為公開識別碼非機密)
 const firebaseConfig = {
-  apiKey: 'PLACEHOLDER',
-  authDomain: 'demo-market-sales.firebaseapp.com',
-  projectId: 'demo-market-sales',
-  storageBucket: 'demo-market-sales.appspot.com',
-  messagingSenderId: '000000000000',
-  appId: '1:000000000000:web:0000000000000000',
+  apiKey: 'AIzaSyCBSD_z_2WYDv4e8S1vJDg2SOXgjMclTio',
+  authDomain: 'market-sales-lily.firebaseapp.com',
+  projectId: 'market-sales-lily',
+  storageBucket: 'market-sales-lily.firebasestorage.app',
+  messagingSenderId: '335096125048',
+  appId: '1:335096125048:web:86a78b32b028623c20ff8d',
 };
 
 // 固定 UID:runbook 部署時「必須」改為創作者真實 UID(Firebase Console → Authentication → User UID)。
 // ⚠️ 留 null 上線 = App 登入 gate 直接拒絕所有人(fail-closed,提示「尚未完成設定」);
 //    資料層另有 firestore.rules 以 FIXED_UID 把關,雙防線互相獨立。
 // emulator / e2e(?emu=1 + localhost)下 null 視為不檢查,方便測試。
-export const CREATOR_UID = null;
-
-const app = initializeApp(firebaseConfig);
+export const CREATOR_UID = 'fEMuo2pogUXx6eKz3Ct33zSt9aM2';
 
 const isNodeEmulator = typeof process !== 'undefined' && !!process.env.FIRESTORE_EMULATOR_HOST;
 const isBrowserEmu =
@@ -38,6 +36,14 @@ const isBrowserEmu =
   window.location.hostname === 'localhost' &&
   new URLSearchParams(window.location.search).get('emu') === '1';
 const isBrowser = typeof window !== 'undefined' && !isNodeEmulator;
+
+// emulator 模式一律用 demo project id:測試鏈(emulators:exec、REST 清庫、e2e helpers)
+// 全部對準 demo-market-sales;真專案 config 填入後不可洩漏到測試路徑。
+const activeConfig = (isNodeEmulator || isBrowserEmu)
+  ? { ...firebaseConfig, projectId: 'demo-market-sales', authDomain: 'demo-market-sales.firebaseapp.com' }
+  : firebaseConfig;
+
+const app = initializeApp(activeConfig);
 
 let db;
 if (isNodeEmulator) {
@@ -75,6 +81,6 @@ export const isEmulatorMode = isBrowserEmu || isNodeEmulator;
 
 // M6 Sheets 鏡像端點。runbook 部署時填入 Apps Script Web App URL。
 // null = 鏡像停用;mirror.js 讀此值,安靜 no-op。
-export const APPS_SCRIPT_URL = null;
+export const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxS2mMZgbchU0MI89KBCEBnB0r_0sif6Q4SEPX9YCwuUDP94T7dTFyWSgmfgELwhOR9/exec';
 
 export { app, db };
