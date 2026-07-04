@@ -50,6 +50,11 @@ export async function show() {
   await refreshToday();
 }
 
+// 現場新增表單開著時,app.js 跳過自動重繪,避免洗掉輸入(購物車本身是模組狀態,不受重繪影響)。
+export function isBusy() {
+  return container?.querySelector('#onfly-form')?.dataset.open === '1';
+}
+
 async function renderGrid() {
   const products = await getActiveProducts();
   const grid = container.querySelector('#product-grid');
@@ -106,27 +111,42 @@ function showMsg(text, isError) {
   m.className = 'msg ' + (isError ? 'error' : 'ok');
 }
 
+let checkingOut = false;
+
 async function onCheckout() {
+  if (checkingOut) return; // 防止結帳處理中重複觸發
   if (!cart.length) {
     showMsg('購物車是空的', true);
     return;
   }
-  const outing = await getOpenOuting();
-  if (!outing) {
-    showMsg('尚未開始場次,請先到「場次」分頁開始一場擺攤', true);
-    return;
-  }
+  checkingOut = true;
+  // 快照(明細/付款/類型)+ 清空購物車必須在點擊當下的「同步段」完成:
+  // 任何 await 之後才讀,期間使用者的點商品/改類型都會污染這一筆(實測踩到的競態)。
   const paymentMethod = container.querySelector('#pay-method').value;
   const type = container.querySelector('#sale-type').value;
-  const items = cart.map((i) => ({ productId: i.productId, name: i.name, price: i.price, cost: i.cost ?? 0, qty: i.qty }));
-  const total = computeTotal(items);
-  await addSale({ items, total, paymentMethod, outingId: outing.id, type });
+  const snapshot = cart;
   cart = [];
   container.querySelector('#sale-type').value = 'sale';
   renderCart();
-  await refreshToday();
-  const label = type === 'sale' ? '已記錄一筆 ' + formatMoney(total) : '已記錄(不計營收)';
-  showMsg(label, false);
+  try {
+    const outing = await getOpenOuting();
+    if (!outing) {
+      // 還原:這筆沒送出,把快照(與期間新點的商品)合併回購物車
+      cart = [...snapshot, ...cart];
+      container.querySelector('#sale-type').value = type;
+      renderCart();
+      showMsg('尚未開始場次,請先到「場次」分頁開始一場擺攤', true);
+      return;
+    }
+    const items = snapshot.map((i) => ({ productId: i.productId, name: i.name, price: i.price, cost: i.cost ?? 0, qty: i.qty }));
+    const total = computeTotal(items);
+    await addSale({ items, total, paymentMethod, outingId: outing.id, type });
+    await refreshToday();
+    const label = type === 'sale' ? '已記錄一筆 ' + formatMoney(total) : '已記錄(不計營收)';
+    showMsg(label, false);
+  } finally {
+    checkingOut = false;
+  }
 }
 
 async function refreshToday() {

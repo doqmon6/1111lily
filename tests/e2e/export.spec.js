@@ -1,5 +1,12 @@
 import { test, expect } from '@playwright/test';
 import fs from 'node:fs/promises';
+import { gotoAndLogin, clearFirestore, clearAuthAccounts } from './helpers.js';
+
+test.beforeEach(async ({ page }) => {
+  await clearFirestore();
+  await clearAuthAccounts();
+  await gotoAndLogin(page);
+});
 
 async function addProduct(page, name, price, cost) {
   await page.locator('.tab[data-target="products"]').click();
@@ -30,7 +37,6 @@ async function recordSale(page, name, qty, method) {
 }
 
 test('場次明細 CSV:新表頭(場次/類型、無件數)與數值', async ({ page }) => {
-  await page.goto('/index.html');
   await addProduct(page, '手鍊', 100, 40);
   await startOuting(page, '玩具展');
   await recordSale(page, '手鍊', 2, 'cash');
@@ -50,7 +56,6 @@ test('場次明細 CSV:新表頭(場次/類型、無件數)與數值', async ({ 
 });
 
 test('商品彙總 CSV:每商品 帶/賣/剩/收入/成本', async ({ page }) => {
-  await page.goto('/index.html');
   await addProduct(page, '明信片', 20, 8);
   await startOuting(page, '松菸', { bring: { 明信片: 30 } });
   await recordSale(page, '明信片', 5, 'cash');
@@ -65,24 +70,32 @@ test('商品彙總 CSV:每商品 帶/賣/剩/收入/成本', async ({ page }) =>
   expect(text).toContain('明信片,30,5,25,100,40'); // 帶30 賣5 剩25 收入100 成本5×8=40
 });
 
-test('未備份提醒:有未備份顯示警告,備份後轉為已備份', async ({ page }) => {
-  await page.goto('/index.html');
+test('JSON 備份可下載(banner 為 M5 上雲語意,見 sync.spec)', async ({ page }) => {
   await addProduct(page, '貼紙', 30);
   await startOuting(page, '一日場');
   await recordSale(page, '貼紙', 1, 'cash');
 
   await page.locator('.tab[data-target="export"]').click();
-  await expect(page.locator('#backup-reminder')).toContainText('尚未備份');
   const [dl] = await Promise.all([
     page.waitForEvent('download'),
     page.click('#backup-btn'),
   ]);
-  await dl.path();
-  await expect(page.locator('#backup-reminder')).toContainText('已備份');
+  expect(await dl.path()).toBeTruthy();
 });
 
-test('JSON 備份 → 清空 → 還原,資料完整回來', async ({ page }) => {
-  await page.goto('/index.html');
+test('壞檔匯入:明確錯誤訊息、不寫入任何資料', async ({ page }) => {
+  await page.locator('.tab[data-target="export"]').click();
+  await page.setInputFiles('#restore-file', {
+    name: 'garbage.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from('{"not":"a backup"}'),
+  });
+  await expect(page.locator('#export-msg')).toContainText('不是有效的備份檔');
+  await page.locator('.tab[data-target="products"]').click();
+  await expect(page.locator('#product-list')).toContainText('還沒有商品');
+});
+
+test('JSON 備份 → 清空 Firestore → 還原,資料完整回來', async ({ page }) => {
   await addProduct(page, '手鍊', 100, 40);
   await startOuting(page, '玩具展');
   await recordSale(page, '手鍊', 2, 'cash');
@@ -94,21 +107,11 @@ test('JSON 備份 → 清空 → 還原,資料完整回來', async ({ page }) =>
   ]);
   const backupPath = await download.path();
 
-  // 模擬手機資料被清空:清掉三個 store 後重載
-  await page.evaluate(() => new Promise((resolve, reject) => {
-    const req = indexedDB.open('market-sales-db');
-    req.onsuccess = () => {
-      const db = req.result;
-      const tx = db.transaction(['products', 'sales', 'outings'], 'readwrite');
-      tx.objectStore('products').clear();
-      tx.objectStore('sales').clear();
-      tx.objectStore('outings').clear();
-      tx.oncomplete = () => { db.close(); resolve(); };
-      tx.onerror = () => reject(tx.error);
-    };
-    req.onerror = () => reject(req.error);
-  }));
-  await page.reload();
+  // 清空 Firestore emulator 模擬「換機 / 資料遺失」
+  await clearFirestore();
+  // 重新導覽並登入(清空後重載)
+  await page.goto('/index.html?emu=1');
+  await page.waitForSelector('#app:not([hidden])', { timeout: 15000 });
 
   await page.locator('.tab[data-target="products"]').click();
   await expect(page.locator('#product-list')).toContainText('還沒有商品');

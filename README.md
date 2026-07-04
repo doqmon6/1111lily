@@ -1,47 +1,172 @@
 # 市集銷售記錄 PWA
 
-給手作創作者擺攤用的**純本機、離線優先**手機網頁 App。商品清單點選快速記銷售、依日期自動對帳、CSV 匯出備份。資料只存在你的手機,不需要網路、不需要帳號、不需要伺服器。
+給手作創作者擺攤用的**離線優先**手機網頁 App。商品清單點選快速記銷售、依場次報表對帳、CSV/JSON 匯出。
+
+v3 架構：PWA + Firebase Auth(Google 登入) + Firestore 離線持久化。資料主權在創作者自己的 Google 帳號;手機離線照記，連線後自動上雲；任何裝置登同一帳號即見同一份資料。
+
+→ 創作者使用說明請見 [docs/USER-GUIDE.md](docs/USER-GUIDE.md)
+
+---
 
 ## 功能
 
-- **商品**:新增/編輯/停售商品(品名 + 單價 + 成本)。成本為材料/進貨成本(選填),用來算毛利,不含工時。
-- **場次**:一場出攤 = 1~N 天,可命名(如「玩具展」)。開場可輸入帶貨數量與固定成本(攤租/交通/住宿);收場看剩餘。同時只有一場進行中。
-- **記銷售**:點選商品 → 調數量 → 選付款方式(現金/轉帳)與類型 → 完成。一筆可含多樣商品,自動加總、歸入進行中場次;可在現場臨時新增商品馬上開賣;畫面常駐「今天累計」。
-  - **特例類型**:贈送 / 補送(補寄)— 算出貨(扣剩餘)但**不計營收**,核銷收入不被汙染。
-- **場次報表**:選場次看 收入 / 筆數 / 現金・轉帳 / 商品成本 / 固定成本 / **淨額**、每日分計、**商品彙總(帶/賣/剩/收入)與好賣排行**;可編輯或刪除單筆銷售。
-- **匯出**:場次銷售明細 CSV、場次商品彙總 CSV、全部明細 CSV(UTF-8 BOM,Excel 開繁中不亂碼)。
-- **備份/還原**:匯出 **JSON 備份檔**(完整資料,可還原)→ 換手機或資料遺失時「從備份還原」;附「N 筆尚未備份」提醒。
+- **Google 登入**:一次登入，多裝置共用資料；未登入不顯示記帳 UI。
+- **雲端同步**:寫入即落地本機，上線自動上雲；「N 筆尚未上雲」提醒待同步筆數，不需手動操作。
+- **商品**:新增/編輯/停售商品（品名、單價、成本）。
+- **場次**:開/收場；帶貨量、固定成本；剩貨自動算。
+- **記銷售**:點商品 → 調數量 → 選付款方式/類型 → 結帳；現場可新增商品；支援贈送/補送特例（出貨但不計收入）。
+- **場次報表**:收入 / 淨額 / 現金・轉帳 / 成本 / 每日分計 / 商品帶賣剩排行；可編輯或刪除單筆銷售。
+- **修改歷史**:每次銷售新增/編輯/刪除都留前後值紀錄，App 內可查；append-only，不可改刪。
+- **Google Sheets 鏡像**:每筆銷售自動同步到創作者名下試算表；以 id upsert（編輯更新列、刪除標「已刪除」不消失）；失敗自動重試，不影響主資料流。
+- **匯出**:場次銷售明細 CSV、場次商品彙總 CSV、全部明細 CSV（UTF-8 BOM，Excel 開繁中不亂碼）。
+- **JSON 備份/還原**:匯出完整 JSON；匯入時合併上傳到 Firestore（upsert 冪等，不刪既有資料）；換機/工程師交接用。
 
-## ⚠️ 資料安全(務必閱讀)
+---
 
-資料只存在這支手機的瀏覽器裡,所以:
+## 資料安全
 
-1. **收攤後務必到「匯出」分頁做「備份全部資料(JSON)」**,存到雲端或傳給自己。CSV 是給你看的報表,**只有 JSON 備份能還原**;手機遺失、損壞、重置都會讓未備份的紀錄消失。換手機時用「從備份還原」把 JSON 讀回來即可。
-2. **請把網站「加到主畫面」**再使用。App 會主動向瀏覽器要求「持久儲存」,但 iOS Safari 對「未加到主畫面、長期未開啟」的網頁仍可能清除本機資料;加到主畫面 + 每場備份最保險。
-3. App 內若顯示「N 筆尚未備份」提醒,代表這些紀錄還沒進 JSON 備份檔。
+三層保障：
 
-## 本機執行 / 開發
+1. **雲端自動同步**：每筆記帳寫入 Firestore，創作者 Google 帳號下的雲端是主要儲存位置。
+2. **本機離線快取**：Firestore 離線持久化讓你的手機也常駐一份，斷網照用。
+3. **JSON 逃生門**：隨時可從「匯出」分頁下載 JSON 備份檔；換機或需要保險時用。
+
+> v2 的「資料只存在這支手機、務必手動備份」語意在 v3 已不適用。建議仍**把 App 加到主畫面**以確保 PWA 持久儲存許可。
+
+---
+
+## 開發與測試
 
 需要 Node.js。
 
 ```bash
-npm install                 # 安裝開發/測試相依(出貨產物本身零相依)
-npm run serve               # 本機啟動 http://localhost:4173
-npx playwright install chromium   # 首次跑 e2e 前安裝瀏覽器
-npm run test:unit           # 單元 + 資料層(vitest + fake-indexeddb)
-npm run test:e2e            # 端到端(Playwright,真瀏覽器 + 真 IndexedDB)
-npm test                    # 全部
+npm install                        # 安裝開發/測試相依
+npm run serve                      # 本機啟動 http://localhost:4173
+npx playwright install chromium    # 首次跑 e2e 前安裝瀏覽器
 ```
 
-App 本身是原生 HTML/CSS/JS + IndexedDB + Service Worker,**沒有建置步驟**;`index.html`、`css/`、`js/`、`sw.js`、`manifest.webmanifest`、`icons/` 即為可部署的全部內容。`tools/`、`tests/` 僅供開發測試,不需部署。
+### npm scripts
 
-## 部署(免費靜態主機)
+| 指令 | 說明 |
+|---|---|
+| `npm run serve` | 本機靜態伺服器（port 4173） |
+| `npm run test:unit` | 純函數層單元測試（vitest，不需 emulator） |
+| `npm run test:emulator` | 資料層 + rules + 遷移 + changelog + 鏡像整合測試（需 emulator） |
+| `npm run test:e2e:emulator` | Playwright e2e + emulator（完整整合驗收） |
+| `npm test` | vitest 單元 + Playwright e2e |
 
-PWA 的安裝與離線需要 HTTPS 來源(本機 `localhost` 也算安全來源)。建議部署到 GitHub Pages 或 Netlify:
+### Firestore emulator 環境
 
-- **GitHub Pages**:把專案推到 GitHub repo → Settings → Pages → 由 branch 根目錄發佈。
-- **Netlify**:拖曳專案資料夾到 Netlify,或連接 GitHub repo;publish directory 設為專案根目錄(無 build command)。
+`test:emulator` 與 `test:e2e:emulator` 需要 **JDK 11+**。
 
-部署後用手機開該網址 → 瀏覽器選單「加到主畫面」即可離線使用。
+本 repo 以 **portable JDK** 方式處理，避免汙染系統：
 
-> 注意:`.gitignore` 已排除 `node_modules/`、測試產物與無關的設定備份資料夾。
+- 放置路徑：`.tools/jdk-21.0.11+10-jre/`（gitignore，不進版控）
+- 版本：`jdk-21.0.11+10-jre`（Adoptium/Temurin JRE 21）
+- `tools/test-emulator.mjs` 在啟動 emulator 前自動設定 `JAVA_HOME` 指向此目錄
+
+**首次設定步驟：**
+
+1. 從 [Adoptium](https://adoptium.net/temurin/releases/) 下載 JRE 21（JRE，非 JDK；選對應作業系統）。
+2. 解壓縮後，把整個資料夾放到 repo 根目錄下的 `.tools/`，確認路徑為 `.tools/jdk-21.0.11+10-jre/bin/java`（Windows 為 `java.exe`）。
+3. 執行 `npm run test:emulator` 確認 emulator 正常啟動。
+
+---
+
+## 部署 runbook（工程師一次性設定）
+
+以下步驟由工程師（larry）在交接前執行一次。**全程使用創作者的 Google 帳號**（資料主權在創作者名下）。
+
+> ⚠️ **開發期間絕不 push master**：GitHub Pages 由本 repo 的 master 分支發佈，push master 會即時改掉創作者正在使用的舊站（v2）。v3 所有開發在 feature branch `v3-cloud-sync` 進行；Firebase Hosting 部署走 `firebase deploy`，與 GitHub Pages 完全無關。
+
+### Step 1：建 Firebase 專案
+
+1. 用**創作者的 Google 帳號**登入 [Firebase Console](https://console.firebase.google.com/)。
+2. 點「新增專案」，輸入專案名稱。
+3. 方案選「**Spark（免費）**」，不綁信用卡。
+
+### Step 2：開啟 Authentication
+
+1. 左側選單「Build → Authentication」→「開始使用」。
+2. 在「Sign-in method」分頁，啟用「**Google**」登入提供者。
+3. 部署 Hosting 後（Step 7），回到 Authentication → Settings → Authorized domains，確認 Firebase Hosting 網域在清單中。
+
+### Step 3：建立 Firestore
+
+1. 左側選單「Build → Firestore Database」→「建立資料庫」。
+2. 選「**正式模式**」（Production mode），地區選台灣就近（asia-east1 或 asia-northeast1）。
+
+### Step 4：取得創作者 UID
+
+1. 先完成 Step 7（部署 Hosting），讓創作者可以開啟網址。
+2. 創作者用 Google 帳號登入 App 一次。
+3. Firebase Console → Authentication → 找到該使用者 → 複製 **User UID**（一串英數字）。
+
+### Step 5：部署 Firestore rules
+
+1. 把 `firestore.rules` 裡所有 `FIXED_UID` 換成第 4 步取得的創作者 UID。
+2. 部署前跑測試確認綠燈：
+   ```bash
+   npm run test:emulator
+   ```
+3. 部署 rules：
+   ```bash
+   npx firebase deploy --only firestore --project <你的專案ID>
+   ```
+
+> `firestore.indexes.json` 為空（v3 架構採長駐 listener + 記憶體 store + 本地過濾，無需複合索引）。
+
+### Step 6：填入 App 端設定
+
+開啟 `js/firebase.js`，填寫兩項：
+
+1. **`firebaseConfig`**：從 Firebase Console → 專案設定 → 一般 → 網頁應用程式（若無則新增）→ 複製整個 config 物件（`apiKey`、`authDomain` 等）貼入。
+2. **`CREATOR_UID`**：把 `null` 改為第 4 步取得的創作者 UID。
+
+> ⚠️ **`CREATOR_UID` 留 `null` 上線 = 所有人被拒（fail-closed 設計）**，登入 gate 會顯示「尚未完成設定」。這是刻意的防漏填保護，不是 bug。emulator 測試下 `null` 會被放行，不影響開發。
+
+### Step 7：部署 Firebase Hosting
+
+```bash
+npx firebase deploy --only hosting --project <你的專案ID>
+```
+
+部署完成後取得正式網址（格式 `https://<專案ID>.web.app`），這就是創作者唯一主網址。
+
+### Step 8：設定 Google Sheets 鏡像（可選）
+
+若需要 Sheets 流水帳：
+
+1. 用**創作者的 Google 帳號**開啟 [script.google.com](https://script.google.com/)，或從目標試算表「Extensions → Apps Script」進入，建立新 Apps Script 專案。
+2. 將 `tools/apps-script-mirror.gs` 的內容貼入。
+3. 部署為 Web App：
+   - Execute as：**Me（創作者本人）**
+   - Who has access：**Anyone**（匿名 POST，無 CORS preflight）
+4. 複製 Web App URL，填入 `js/firebase.js` 的 `APPS_SCRIPT_URL`（目前為 `null`）。
+5. 重新部署 Hosting：`npx firebase deploy --only hosting --project <你的專案ID>`
+
+### Step 9：交接與驗收
+
+> 交接時機：創作者當前場次結束後。
+
+1. 創作者手機開**舊站**（GitHub Pages v2 網址）→「匯出」→「備份全部資料（JSON）」。
+2. 開**新網址（Firebase Hosting）**→ Google 登入 → 「匯出」→「從備份還原」→ 選剛才的 JSON 檔。
+3. 驗收：新站場次報表的筆數/金額與舊站一致；用電腦開新網址登入，也看得到相同資料。
+4. 手機「更換主畫面捷徑」為新網址；告知創作者以後只用新的。
+
+**驗收清單（逐項打勾）：**
+
+- [ ] 創作者 Google 登入成功
+- [ ] 記一筆銷售後另一裝置可見
+- [ ] 「N 筆尚未上雲」顯示正確，連線後消失
+- [ ] Google Sheets 出現新列（編輯後更新、刪除後標「已刪除」）
+- [ ] 他人 Google 帳號登入被拒（「此帳號無權限」）
+- [ ] 匯入 JSON 備份後筆數與舊站一致
+- [ ] Firebase Console 帳單顯示 Spark 免費方案
+
+---
+
+## 規格與 BACKLOG
+
+- 完整規格：[docs/specs/2026-07-04-cloud-sync-firebase-v3.md](docs/specs/2026-07-04-cloud-sync-firebase-v3.md)
+- 延後項目：[docs/BACKLOG.md](docs/BACKLOG.md)

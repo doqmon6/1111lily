@@ -13,32 +13,55 @@
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-  <header class="app-header">
-    <h1 id="app-title">記銷售</h1>
-  </header>
+  <!-- 登入畫面:未登入時顯示 -->
+  <div id="login-screen" hidden>
+    <div class="login-box">
+      <h1 class="login-title">市集銷售記錄</h1>
+      <p class="login-desc">登入後即可記帳,資料自動備份到雲端。</p>
+      <button id="login-btn" class="btn primary login-btn" type="button">使用 Google 登入</button>
+      <p id="login-error" class="error" hidden></p>
+    </div>
+  </div>
 
-  <main>
-    <section id="view-sale" class="view" data-view="sale">
-      <p class="placeholder">記銷售畫面(待 M4)</p>
-    </section>
-    <section id="view-products" class="view" data-view="products" hidden>
-      <p class="placeholder">商品管理畫面(待 M3)</p>
-    </section>
-    <section id="view-outing" class="view" data-view="outing" hidden>
-      <p class="placeholder">場次畫面</p>
-    </section>
-    <section id="view-export" class="view" data-view="export" hidden>
-      <p class="placeholder">匯出備份畫面(待 M6)</p>
-    </section>
-  </main>
+  <!-- 主應用程式:登入後顯示 -->
+  <div id="app" hidden>
+    <header class="app-header">
+      <h1 id="app-title">記銷售</h1>
+    </header>
 
-  <nav class="tabbar" aria-label="主導覽">
-    <button class="tab" type="button" data-target="sale" aria-current="page"><span class="ico">🧾</span><span class="lbl">記銷售</span></button>
-    <button class="tab" type="button" data-target="products"><span class="ico">📦</span><span class="lbl">商品</span></button>
-    <button class="tab" type="button" data-target="outing"><span class="ico">🎪</span><span class="lbl">場次</span></button>
-    <button class="tab" type="button" data-target="export"><span class="ico">💾</span><span class="lbl">匯出</span></button>
-  </nav>
+    <main>
+      <!-- 各 view 內容由對應 js/ui/* 模組於登入後 init() 填充 -->
+      <section id="view-sale" class="view" data-view="sale">
+        <p class="placeholder">載入中…</p>
+      </section>
+      <section id="view-products" class="view" data-view="products" hidden>
+        <p class="placeholder">載入中…</p>
+      </section>
+      <section id="view-outing" class="view" data-view="outing" hidden>
+        <p class="placeholder">載入中…</p>
+      </section>
+      <section id="view-export" class="view" data-view="export" hidden>
+        <p class="placeholder">載入中…</p>
+      </section>
+    </main>
 
+    <nav class="tabbar" aria-label="主導覽">
+      <button class="tab" type="button" data-target="sale" aria-current="page"><span class="ico">🧾</span><span class="lbl">記銷售</span></button>
+      <button class="tab" type="button" data-target="products"><span class="ico">📦</span><span class="lbl">商品</span></button>
+      <button class="tab" type="button" data-target="outing"><span class="ico">🎪</span><span class="lbl">場次</span></button>
+      <button class="tab" type="button" data-target="export"><span class="ico">💾</span><span class="lbl">匯出</span></button>
+    </nav>
+  </div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "firebase/app": "https://www.gstatic.com/firebasejs/12.15.0/firebase-app.js",
+      "firebase/firestore": "https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js",
+      "firebase/auth": "https://www.gstatic.com/firebasejs/12.15.0/firebase-auth.js"
+    }
+  }
+  </script>
   <script type="module" src="js/app.js"></script>
 </body>
 </html>

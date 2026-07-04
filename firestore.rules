@@ -1,0 +1,29 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 把 fEMuo2pogUXx6eKz3Ct33zSt9aM2 換成創作者的 Firebase Auth UID(runbook M7 執行)
+    function isCreator() {
+      return request.auth != null && request.auth.uid == 'fEMuo2pogUXx6eKz3Ct33zSt9aM2';
+    }
+
+    // changelog:append-only —— 允許新增與讀取,禁止修改/刪除
+    // 必須放在外層 read/write 之前宣告,但 Firestore rules 是 OR 邏輯:
+    // 要讓此處的 deny 生效,外層 {document=**} 不可再允許 changelog 的 update/delete。
+    // 因此外層僅允許 read,各子集合分別允許 write;changelog 不在 write 清單。
+    match /users/{uid}/changelog/{changeId} {
+      allow read, create: if isCreator() && uid == 'fEMuo2pogUXx6eKz3Ct33zSt9aM2';
+      allow update, delete: if false;
+    }
+
+    // products / sales / outings:完整讀寫
+    match /users/{uid}/products/{docId} {
+      allow read, write: if isCreator() && uid == 'fEMuo2pogUXx6eKz3Ct33zSt9aM2';
+    }
+    match /users/{uid}/sales/{docId} {
+      allow read, write: if isCreator() && uid == 'fEMuo2pogUXx6eKz3Ct33zSt9aM2';
+    }
+    match /users/{uid}/outings/{docId} {
+      allow read, write: if isCreator() && uid == 'fEMuo2pogUXx6eKz3Ct33zSt9aM2';
+    }
+  }
+}

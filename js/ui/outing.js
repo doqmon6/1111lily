@@ -24,6 +24,11 @@ export async function show() {
   await render();
 }
 
+// 使用者互動中(場次表單或單筆編輯器開著)→ app.js 跳過自動重繪,避免洗掉輸入。
+export function isBusy() {
+  return !!container?.querySelector('#outing-form form, .sale-editor');
+}
+
 async function render() {
   const outings = await getAllOutings();
   const open = outings.find((o) => o.status === 'open') ?? null;

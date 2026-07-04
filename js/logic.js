@@ -126,6 +126,32 @@ export function toSalesCSV(sales, outingNameById = {}) {
   return BOM + lines.join('\r\n');
 }
 
+/**
+ * 比對 sale 前後差異,回傳人讀描述陣列。
+ * create(before=null)或 delete(after=null)時回傳空陣列。
+ * 只列有變化的欄位:總金額、類型、付款方式、明細。
+ */
+export function saleChangeSummary(before, after) {
+  if (!before || !after) return [];
+  const changes = [];
+  if (before.total !== after.total) {
+    changes.push(`總金額 ${formatMoney(before.total)} → ${formatMoney(after.total)}`);
+  }
+  if ((before.type ?? 'sale') !== (after.type ?? 'sale')) {
+    changes.push(`類型 ${typeLabel(before.type)} → ${typeLabel(after.type)}`);
+  }
+  if (before.paymentMethod !== after.paymentMethod) {
+    changes.push(`付款 ${paymentLabel(before.paymentMethod)} → ${paymentLabel(after.paymentMethod)}`);
+  }
+  const itemsStr = (items) => (items ?? []).map((i) => `${i.name}×${i.qty}`).join('、');
+  const bStr = itemsStr(before.items);
+  const aStr = itemsStr(after.items);
+  if (bStr !== aStr) {
+    changes.push(`明細 ${bStr} → ${aStr}`);
+  }
+  return changes;
+}
+
 /** 商品彙總 CSV:一列一商品(帶量/賣出/剩餘/收入/成本),供「這場共賣幾個」快速閱覽。 */
 export function toProductSummaryCSV(aggregate) {
   const header = ['商品', '帶量', '賣出', '剩餘', '收入', '成本'];

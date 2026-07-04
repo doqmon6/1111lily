@@ -1,17 +1,90 @@
-import 'fake-indexeddb/auto';
-import { IDBFactory } from 'fake-indexeddb';
-import { describe, it, expect, beforeEach } from 'vitest';
+// db.test.js — 連 Firestore Emulator。
+// 執行方式:npm run test:emulator(emulators:exec 自動注入 FIRESTORE_EMULATOR_HOST)。
+// M2 後 firestore.rules 鎖定 UID;本檔在 Auth emulator 以 admin API 建立
+// localId='FIXED_UID' 的帳號並登入 —— uid 正好等於 rules 的佔位字面值,
+// 讓資料層測試跑在「部署那份 rules」之下。rules 的 allow/deny 矩陣由 rules.test.js 負責。
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { getAuth, signInWithEmailAndPassword } from 'firebase/auth';
+import { waitForPendingWrites } from 'firebase/firestore';
+import { app, db } from '../js/firebase.js';
 import { dateKey } from '../js/logic.js';
+import { RULES_UID } from './rules-uid.js';
 import {
   addProduct, getAllProducts, getActiveProducts, setProductActive, getProduct, updateProduct,
   addSale, getSalesByDate, getSalesByOuting, getAllSales, updateSale, deleteSale, _closeDb,
   addOuting, getAllOutings, getOpenOuting, closeOuting, ensureMigrated,
+  setUserId,
 } from '../js/db.js';
 
-beforeEach(() => {
-  // 每個測試一個全新的記憶體資料庫,確保隔離。
-  globalThis.indexedDB = new IDBFactory();
-  _closeDb();
+const EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? 'localhost:8080';
+const AUTH_EMULATOR_HOST = 'localhost:9099';
+const PROJECT_ID = 'demo-market-sales';
+const CLEAR_URL = `http://${EMULATOR_HOST}/emulator/v1/projects/${PROJECT_ID}/databases/(default)/documents`;
+const AUTH_CLEAR_URL = `http://${AUTH_EMULATOR_HOST}/emulator/v1/projects/${PROJECT_ID}/accounts`;
+
+// Auth emulator 中,Bearer token 只要非空字串即被視為 admin mode
+// 這讓 /v1/projects/{id}/accounts POST 允許指定 localId
+const FAKE_ADMIN_BEARER = 'owner';
+const DB_TEST_UID = RULES_UID;
+const DB_TEST_EMAIL = 'dbtest@test.local';
+const DB_TEST_PASSWORD = 'test-password-123';
+
+let auth;
+
+beforeAll(async () => {
+  // Auth emulator 連線由 js/firebase.js 依 FIREBASE_AUTH_EMULATOR_HOST 完成,這裡直接取用
+  auth = getAuth(app);
+
+  // 清空 Auth emulator 所有帳號(admin mode:Bearer 任意非空字串)
+  await fetch(AUTH_CLEAR_URL, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${FAKE_ADMIN_BEARER}` },
+  });
+
+  // 用 admin mode 在 Auth emulator 建立指定 UID 的帳號
+  // Authorization: Bearer <任意非空字串> 在 emulator 被視為 Oauth2 admin
+  const createRes = await fetch(
+    `http://${AUTH_EMULATOR_HOST}/identitytoolkit.googleapis.com/v1/projects/${PROJECT_ID}/accounts`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${FAKE_ADMIN_BEARER}`,
+      },
+      body: JSON.stringify({
+        localId: DB_TEST_UID,
+        email: DB_TEST_EMAIL,
+        password: DB_TEST_PASSWORD,
+        returnSecureToken: true,
+      }),
+    },
+  );
+  if (!createRes.ok) {
+    const text = await createRes.text();
+    throw new Error(`Auth emulator 建立帳號失敗:${createRes.status} ${text}`);
+  }
+
+  // 以 client SDK 登入
+  const cred = await signInWithEmailAndPassword(auth, DB_TEST_EMAIL, DB_TEST_PASSWORD);
+  console.log('登入成功,uid:', cred.user.uid);
+  setUserId(DB_TEST_UID);
+});
+
+afterAll(() => {});
+
+beforeEach(async () => {
+  // 先等前一個 test 的未 ack 寫入落地(db.js 寫入採 latency compensation 不等 ack),
+  // 再清空 emulator。清庫後「不要」重建 listener(重建會從快取種子讀到清庫前的鬼影),
+  // 而是讓活著的 listener 收到刪除事件,輪詢到 store 歸零才放行。
+  await waitForPendingWrites(db);
+  setUserId(DB_TEST_UID);
+  await fetch(CLEAR_URL, { method: 'DELETE' });
+  for (let i = 0; ; i++) {
+    const [p, s, o] = await Promise.all([getAllProducts(), getAllSales(), getAllOutings()]);
+    if (!p.length && !s.length && !o.length) break;
+    if (i > 100) throw new Error('emulator 清庫後 store 未歸零');
+    await new Promise((r) => setTimeout(r, 30));
+  }
 });
 
 describe('products', () => {
@@ -115,35 +188,50 @@ describe('outings', () => {
   });
 });
 
-describe('v1 → v2 遷移', () => {
-  function openV1() {
-    return new Promise((resolve, reject) => {
-      const req = indexedDB.open('market-sales-db', 1);
-      req.onupgradeneeded = () => {
-        const db = req.result;
-        db.createObjectStore('products', { keyPath: 'id' });
-        const sales = db.createObjectStore('sales', { keyPath: 'id' });
-        sales.createIndex('dateKey', 'dateKey', { unique: false });
-      };
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
-    });
-  }
+describe('pending overlay(未 ack 寫入的 read-your-write)', () => {
+  it('連續快寫同一筆:新增→更新→再更新,讀取永遠是最後狀態', async () => {
+    const p = await addProduct({ name: '快寫', price: 10 });
+    await updateProduct({ ...p, price: 20 });
+    await updateProduct({ ...p, price: 30 });
+    expect((await getProduct(p.id)).price).toBe(30);
+    // 等 ack 落地後(快照接管)仍是最後狀態
+    await waitForPendingWrites(db);
+    await new Promise((r) => setTimeout(r, 50));
+    expect((await getProduct(p.id)).price).toBe(30);
+  });
 
+  it('寫後立刪:讀取立即消失,ack 落地後不復活', async () => {
+    const s = await addSale({ items: [], total: 5, paymentMethod: 'cash', createdAt: '2026-05-30T01:00:00.000Z' });
+    await deleteSale(s.id);
+    expect(await getAllSales()).toHaveLength(0);
+    await waitForPendingWrites(db);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(await getAllSales()).toHaveLength(0);
+  });
+
+  it('刪後重建同 id:讀取為新內容', async () => {
+    const p = await addProduct({ name: '舊', price: 10 });
+    await waitForPendingWrites(db);
+    await updateProduct({ ...p, name: '刪前' });
+    // 模擬刪後重建(同 id upsert)
+    const rebuilt = { ...p, name: '重建', price: 99 };
+    await updateProduct(rebuilt);
+    expect((await getProduct(p.id)).name).toBe('重建');
+    await waitForPendingWrites(db);
+    await new Promise((r) => setTimeout(r, 50));
+    expect((await getProduct(p.id)).name).toBe('重建');
+    expect((await getProduct(p.id)).price).toBe(99);
+  });
+});
+
+describe('v1 → v2 遷移', () => {
   it('舊銷售(無 outingId)升級後保留,並歸入已關閉的「舊紀錄」場次', async () => {
-    const v1 = await openV1();
-    await new Promise((resolve, reject) => {
-      const tx = v1.transaction('sales', 'readwrite');
-      tx.objectStore('sales').add({
-        id: 'old-1',
-        items: [{ productId: 'p', name: '舊商品', price: 100, qty: 1 }],
-        total: 100, paymentMethod: 'cash',
-        createdAt: '2026-05-01T01:00:00.000Z', dateKey: '2026-05-01',
-      });
-      tx.oncomplete = resolve;
-      tx.onerror = () => reject(tx.error);
+    // Firestore 版:直接以 addSale 寫入無 outingId 的銷售模擬舊資料
+    await addSale({
+      items: [{ productId: 'p', name: '舊商品', price: 100, qty: 1 }],
+      total: 100, paymentMethod: 'cash',
+      createdAt: '2026-05-01T01:00:00.000Z',
     });
-    v1.close();
 
     const legacy = await ensureMigrated();
     expect(legacy.name).toBe('舊紀錄');
@@ -151,7 +239,6 @@ describe('v1 → v2 遷移', () => {
 
     const all = await getAllSales();
     expect(all).toHaveLength(1);
-    expect(all[0].id).toBe('old-1');
     expect(all[0].total).toBe(100);
     expect(all[0].outingId).toBe(legacy.id);
 

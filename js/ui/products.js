@@ -28,6 +28,11 @@ export async function show() {
   await renderList();
 }
 
+// 行內編輯表單開著時,app.js 跳過自動重繪,避免洗掉輸入。
+export function isBusy() {
+  return !!document.querySelector('#view-products .row-edit');
+}
+
 function isValidPrice(price) {
   return Number.isInteger(price) && price > 0;
 }

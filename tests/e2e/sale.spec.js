@@ -1,4 +1,11 @@
 import { test, expect } from '@playwright/test';
+import { gotoAndLogin, clearFirestore, clearAuthAccounts } from './helpers.js';
+
+test.beforeEach(async ({ page }) => {
+  await clearFirestore();
+  await clearAuthAccounts();
+  await gotoAndLogin(page);
+});
 
 async function addProduct(page, name, price) {
   await page.locator('.tab[data-target="products"]').click();
@@ -17,7 +24,6 @@ async function startOuting(page, name) {
 }
 
 test('多商品銷售:即時總額、完成存檔、今天累計更新', async ({ page }) => {
-  await page.goto('/index.html');
   await addProduct(page, '手鍊', 100);
   await addProduct(page, '耳環', 150);
   await startOuting(page, '測試場');
@@ -44,7 +50,6 @@ test('多商品銷售:即時總額、完成存檔、今天累計更新', async (
 });
 
 test('購物車數量增減與移除,總額即時重算', async ({ page }) => {
-  await page.goto('/index.html');
   await addProduct(page, '貼紙', 30);
   await page.locator('.tab[data-target="sale"]').click();
 
@@ -65,7 +70,6 @@ test('購物車數量增減與移除,總額即時重算', async ({ page }) => {
 });
 
 test('停售商品不出現在記銷售商品格', async ({ page }) => {
-  await page.goto('/index.html');
   await addProduct(page, '絕版品', 100);
   await page.locator('.tab[data-target="products"]').click();
   await page.locator('#product-list li', { hasText: '絕版品' }).getByRole('button', { name: '停售' }).click();
@@ -75,7 +79,6 @@ test('停售商品不出現在記銷售商品格', async ({ page }) => {
 });
 
 test('現場新增商品立即可賣並存入清單', async ({ page }) => {
-  await page.goto('/index.html');
   await page.locator('.tab[data-target="sale"]').click();
 
   await page.click('#add-onfly-btn');

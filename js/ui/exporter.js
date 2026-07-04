@@ -1,13 +1,15 @@
 // 匯出與備份:
 // - CSV(給人看 / Excel):場次明細、場次商品彙總、全部明細。
 // - JSON 備份檔(可還原):防手機遺失 / 換機。附「未備份提醒」。
+// - 登出按鈕(低調,尾部)。
 import {
   getAllSales, getSalesByOuting, getAllOutings, getOuting, getAllProducts, exportAll, importAll,
+  getPendingSalesCount,
 } from '../db.js';
 import { toSalesCSV, toProductSummaryCSV, productAggregate, ranking, dateKey } from '../logic.js';
 import { el } from './dom.js';
-
-const LAST_BACKUP_KEY = 'market-sales:lastBackupAt';
+import { signOutUser } from '../auth.js';
+import { renderHistoryCard } from './history.js';
 
 let container;
 
@@ -35,8 +37,28 @@ export async function init(viewEl) {
       el('button', { class: 'btn', id: 'export-all-btn', type: 'button', text: '匯出全部明細 CSV', onClick: exportAllDetail }),
       el('p', { class: 'hint', text: 'CSV 是給你看的報表;要能換手機/還原,請用下面的 JSON 備份。' }),
       el('button', { class: 'btn primary', id: 'backup-btn', type: 'button', text: '備份全部資料(JSON,可還原)', onClick: backupJSON }),
-      el('label', { class: 'field' }, '從備份還原(覆蓋目前資料)', restoreInput),
+      el('label', { class: 'field' }, '從備份還原(合併上傳到雲端,不會刪除既有資料)', restoreInput),
       el('p', { id: 'export-msg', class: 'msg', hidden: true }),
+    ),
+
+    renderHistoryCard(),
+
+    el('div', { class: 'card' },
+      el('p', { class: 'hint' },
+        el('a', {
+          href: 'https://github.com/doqmon6/1111lily/blob/master/docs/USER-GUIDE.md',
+          target: '_blank',
+          rel: 'noopener',
+          text: '使用說明',
+        }),
+      ),
+      el('button', {
+        class: 'btn danger',
+        id: 'signout-btn',
+        type: 'button',
+        text: '登出',
+        onClick: () => signOutUser().catch((err) => console.error('登出失敗', err)),
+      }),
     ),
   );
   await render();
@@ -93,8 +115,6 @@ async function backupJSON() {
   const data = await exportAll();
   const payload = { app: 'market-sales', version: 2, exportedAt: new Date().toISOString(), ...data };
   await output(JSON.stringify(payload, null, 2), `備份_${dateKey(new Date())}.json`, 'application/json');
-  localStorage.setItem(LAST_BACKUP_KEY, new Date().toISOString());
-  await renderReminder();
 }
 
 async function onRestore(e) {
@@ -107,28 +127,32 @@ async function onRestore(e) {
   } catch {
     return showMsg('檔案格式錯誤,無法讀取', true);
   }
-  if (!data || !Array.isArray(data.products) || !Array.isArray(data.sales)) {
+  if (!data || !Array.isArray(data.products) || !Array.isArray(data.sales)
+    || (data.outings != null && !Array.isArray(data.outings))) {
     return showMsg('這不是有效的備份檔', true);
   }
-  if (!window.confirm('還原會以備份檔「覆蓋」目前手機上的所有資料,確定?')) return;
-  await importAll({ products: data.products, sales: data.sales, outings: data.outings ?? [] });
-  showMsg(`已還原:商品 ${data.products.length}、銷售 ${data.sales.length}、場次 ${(data.outings ?? []).length}`, false);
+  if (!window.confirm('會把備份檔的資料合併上傳到雲端(相同紀錄以備份檔為準,不會刪除其他資料),確定?')) return;
+  try {
+    await importAll({ products: data.products, sales: data.sales, outings: data.outings ?? [] });
+  } catch (err) {
+    console.error('備份匯入失敗', err);
+    return showMsg('匯入失敗(請確認網路後重試;備份檔未受影響)', true);
+  }
+  showMsg(`已還原:商品 ${data.products.length}、銷售 ${data.sales.length}、場次 ${(data.outings ?? []).length}(已上傳雲端)`, false);
 }
 
-// ---- 未備份提醒 ----
+// ---- 上雲狀態提醒(M5:取代 v2 的「尚未備份」語意)----
 
 async function renderReminder() {
-  const last = localStorage.getItem(LAST_BACKUP_KEY);
-  const sales = await getAllSales();
-  const unbacked = last ? sales.filter((s) => s.createdAt > last).length : sales.length;
+  const pendingCount = await getPendingSalesCount();
   const banner = container.querySelector('#backup-reminder');
   banner.hidden = false;
-  if (unbacked > 0) {
+  if (pendingCount > 0) {
     banner.className = 'backup-reminder warn';
-    banner.replaceChildren(el('span', { text: `⚠️ 有 ${unbacked} 筆自上次備份後尚未備份。收攤後請「備份全部資料(JSON)」存到雲端或傳給自己。` }));
+    banner.replaceChildren(el('span', { text: `⚠️ 有 ${pendingCount} 筆尚未上雲(暫存在這支手機)。連上網路後會自動上傳,不用做任何事。` }));
   } else {
     banner.className = 'backup-reminder ok';
-    banner.replaceChildren(el('span', { text: '✓ 目前資料已備份。' }));
+    banner.replaceChildren(el('span', { text: '✓ 所有紀錄已上雲。' }));
   }
 }
 
