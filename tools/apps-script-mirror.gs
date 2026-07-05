@@ -11,17 +11,17 @@
  *   5. 複製 Web App URL → 填入 js/firebase.js 的 APPS_SCRIPT_URL
  *
  * 接收格式 (Content-Type: text/plain, body 為 JSON 字串):
- *   新增/更新: { id, date, time, outing, type, items, total, payment, deleted: false }
+ *   新增/更新: { id, date, time, outing, type, items, total, payment, note, deleted: false }
  *   刪除標記: { id, deleted: true }
  *
  * 試算表規格:
  *   - 第一個工作表 (index 0)
- *   - 第 1 列為表頭: id | 日期 | 時間 | 場次 | 類型 | 商品明細 | 總金額 | 付款方式 | 狀態
+ *   - 第 1 列為表頭: id | 日期 | 時間 | 場次 | 類型 | 商品明細 | 總金額 | 付款方式 | 備註 | 狀態
  *   - 第 1 欄 (A) 為 id,用於 upsert 定位
  *   - 「狀態」欄: 空 = 正常;「已刪除」= 已刪除
  */
 
-var HEADERS = ['id', '日期', '時間', '場次', '類型', '商品明細', '總金額', '付款方式', '狀態'];
+var HEADERS = ['id', '日期', '時間', '場次', '類型', '商品明細', '總金額', '付款方式', '備註', '狀態'];
 
 function doPost(e) {
   try {
@@ -58,6 +58,7 @@ function doPost(e) {
         payload.items   || '',
         payload.total   != null ? payload.total : '',
         payload.payment || '',
+        payload.note    || '',
         '',  // 狀態:正常為空
       ];
 

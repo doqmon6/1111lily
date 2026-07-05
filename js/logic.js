@@ -190,3 +190,14 @@ export function toProductSummaryCSV(aggregate) {
   }
   return BOM + lines.join('\r\n');
 }
+
+/**
+ * email 白名單檢查(fail-closed):allowedEmails 為空一律 false;需 emailVerified 且 email
+ * (小寫正規化)在名單內。emailVerified 與 rules 的 email_verified 對齊(Google 登入恆為 true,
+ * 屬縱深防禦);toLowerCase 依賴「Gmail 帳號 token email 為小寫 canonical 形態」前提,
+ * rules 端字面值即小寫。
+ */
+export function isAllowedUser(user, allowedEmails) {
+  if (!allowedEmails?.length) return false;
+  return !!user?.emailVerified && allowedEmails.includes(user?.email?.toLowerCase());
+}

@@ -3,6 +3,7 @@ import {
   computeTotal, summarizeDay, dateKey, formatMoney,
   outingRevenue, sumFixedCosts, soldCost, outingNet, productAggregate, ranking,
   toSalesCSV, toProductSummaryCSV, saleChangeSummary, itemsSummary, onlineCreatedAt,
+  isAllowedUser,
 } from '../js/logic.js';
 
 describe('computeTotal', () => {
@@ -299,5 +300,29 @@ describe('soldCost / outingNet', () => {
   it('淨額 = 收入 − 出貨成本 − 固定成本', () => {
     const fixed = [{ label: '攤租', amount: 500 }, { label: '交通', amount: 100 }];
     expect(outingNet(sales, fixed)).toBe(1000 - 440 - 600);
+  });
+});
+
+describe('isAllowedUser', () => {
+  const allowed = ['a@gmail.com', 'b@gmail.com'];
+
+  it('白名單內且已驗證為 true', () => {
+    expect(isAllowedUser({ email: 'a@gmail.com', emailVerified: true }, allowed)).toBe(true);
+  });
+
+  it('白名單內但未驗證為 false', () => {
+    expect(isAllowedUser({ email: 'a@gmail.com', emailVerified: false }, allowed)).toBe(false);
+  });
+
+  it('email 不在白名單為 false', () => {
+    expect(isAllowedUser({ email: 'c@gmail.com', emailVerified: true }, allowed)).toBe(false);
+  });
+
+  it('白名單為空陣列一律 false(fail-closed)', () => {
+    expect(isAllowedUser({ email: 'a@gmail.com', emailVerified: true }, [])).toBe(false);
+  });
+
+  it('email 大寫仍可比對成功(小寫正規化)', () => {
+    expect(isAllowedUser({ email: 'A@GMAIL.COM', emailVerified: true }, allowed)).toBe(true);
   });
 });

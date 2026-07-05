@@ -253,4 +253,14 @@ describe('note 欄位', () => {
     const s = await addSale({ items: [], total: 0, paymentMethod: 'cash', createdAt: '2026-05-30T01:00:00.000Z' });
     expect(s.note).toBe('');
   });
+
+  it('updateSale 更新 note,讀回新值', async () => {
+    const s = await addSale({
+      items: [], total: 0, paymentMethod: 'cash', createdAt: '2026-05-30T01:00:00.000Z',
+      note: 'IG @foo',
+    });
+    await updateSale({ ...s, note: 'IG @bar' });
+    const got = await getSale(s.id);
+    expect(got.note).toBe('IG @bar');
+  });
 });

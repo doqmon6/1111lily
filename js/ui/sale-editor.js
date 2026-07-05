@@ -53,6 +53,7 @@ export function renderSaleEditor({ sale, showDate, onSave, onCancel }) {
   const noteInput = el('input', { class: 'edit-note', type: 'text', maxlength: 200, placeholder: '備註(選填)' });
   noteInput.value = note;
   noteInput.addEventListener('input', () => { note = noteInput.value; });
+  // trim 對齊 sale.js 線上記帳路徑的備註處理(儲存時去除前後空白)
 
   const dateInput = showDate
     ? el('input', { class: 'edit-date', type: 'date', value: sale.dateKey })
@@ -68,7 +69,7 @@ export function renderSaleEditor({ sale, showDate, onSave, onCancel }) {
     el('div', { class: 'row-actions' },
       el('button', { class: 'btn accent', type: 'button', text: '儲存',
         onClick: () => {
-          const patch = { items: draft, total: computeTotal(draft), paymentMethod: method, type, note };
+          const patch = { items: draft, total: computeTotal(draft), paymentMethod: method, type, note: note.trim() };
           if (showDate) patch.createdAt = onlineCreatedAt(dateInput.value, new Date(sale.createdAt));
           onSave(patch);
         } }),

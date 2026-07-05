@@ -1,6 +1,6 @@
 {
   "name": "market-sales-pwa",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "description": "手作創作者市集銷售記錄 PWA — 純本機離線",

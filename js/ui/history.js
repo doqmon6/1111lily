@@ -2,7 +2,7 @@
 // renderHistoryCard() 回傳一個 card 元素,掛入 exporter.js init 尾端。
 // 展開狀態存模組變數 _expanded:show()/重繪時保留使用者展開選擇。
 import { getChangelog } from '../db.js';
-import { saleChangeSummary, formatMoney } from '../logic.js';
+import { saleChangeSummary, formatMoney, itemsSummary } from '../logic.js';
 import { el } from './dom.js';
 
 let _expanded = false;
@@ -21,8 +21,7 @@ function formatTime(isoStr) {
 
 function saleSummary(sale) {
   if (!sale) return '';
-  const items = (sale.items ?? []).map((i) => `${i.name}×${i.qty}`).join('、');
-  return `${items}  ${formatMoney(sale.total)}`;
+  return `${itemsSummary(sale.items ?? [])}  ${formatMoney(sale.total)}`;
 }
 
 function renderList(entries) {

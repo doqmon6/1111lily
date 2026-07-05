@@ -7,6 +7,7 @@ import * as sale from './ui/sale.js';
 import * as outing from './ui/outing.js';
 import * as online from './ui/online.js';
 import * as exporter from './ui/exporter.js';
+import { isAllowedUser } from './logic.js';
 import { setUserId, onDataChanged, _closeDb } from './db.js';
 import { signInWithGoogle, signOutUser, onAuth } from './auth.js';
 import { CREATOR_UID, ALLOWED_EMAILS, isEmulatorMode } from './firebase.js';
@@ -148,9 +149,7 @@ onAuth(async (user) => {
       showLoginScreen('App 尚未完成設定(未綁定授權帳號),請聯絡工程師');
       return;
     }
-    // emailVerified 與 rules 的 email_verified 對齊(Google 登入恆為 true,此為縱深防禦);
-    // toLowerCase 依賴「Gmail 帳號 token email 為小寫 canonical 形態」前提,rules 端字面值即小寫
-    if (!user.emailVerified || !ALLOWED_EMAILS.includes(user.email?.toLowerCase())) {
+    if (!isAllowedUser(user, ALLOWED_EMAILS)) {
       console.warn('email 不在白名單或未驗證,拒絕登入:', user.email);
       await signOutUser();
       showLoginScreen('此帳號無權限');

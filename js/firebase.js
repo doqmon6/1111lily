@@ -79,7 +79,7 @@ if (isNodeEmulator) {
   db = initializeFirestore(app, { localCache: memoryLocalCache() });
 }
 
-// e2e / 開發用 emulator 模式旗標(app.js 的 fail-closed gate 依此放行 null CREATOR_UID)
+// e2e / 開發用 emulator 模式旗標(app.js 的 fail-closed gate 依此跳過 ALLOWED_EMAILS 白名單檢查)
 export const isEmulatorMode = isBrowserEmu || isNodeEmulator;
 
 // M6 Sheets 鏡像端點。runbook 部署時填入 Apps Script Web App URL。

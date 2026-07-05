@@ -51,7 +51,7 @@ main { padding: 12px; }
   height: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
   padding-bottom: env(safe-area-inset-bottom);
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   background: var(--surface);
   border-top: 1px solid var(--line);
   z-index: 10;
@@ -213,6 +213,7 @@ input, select {
 .sale-items { flex: 1 1 auto; }
 .sale-method { font-size: .78rem; background: #f3e9e2; color: var(--muted); border-radius: 999px; padding: 2px 8px; align-self: center; }
 .sale-total { font-weight: 700; }
+.sale-note { color: var(--muted); font-style: italic; flex-basis: 100%; }
 .sale-editor { display: flex; flex-direction: column; gap: 10px; width: 100%; }
 .edit-items { display: flex; flex-direction: column; gap: 6px; }
 .edit-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; }

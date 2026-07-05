@@ -158,6 +158,21 @@ describe('案例1b:addSale 帶 note → payload.note 原樣帶入', () => {
   });
 });
 
+// ─── 案例 1c:outingId 指向不存在(已刪)的場次 → payload.outing 為空字串 ───
+describe('案例1c:outingId 指向已刪場次 → payload.outing 為空字串', () => {
+  it('outing 欄位為空字串,不因場次已刪而中斷', async () => {
+    const sale = await addSale({
+      items: [ITEM], total: 200, paymentMethod: 'cash',
+      createdAt: '2026-07-04T10:30:00.000Z', outingId: 'deleted-outing-id', type: 'sale',
+    });
+    await waitForMirrorFlush();
+
+    expect(capturedPayloads).toHaveLength(1);
+    expect(capturedPayloads[0].id).toBe(sale.id);
+    expect(capturedPayloads[0].outing).toBe('');
+  });
+});
+
 // ─── 案例 2:updateSale(改 type gift) → payload type=贈送(upsert 語意) ───
 describe('案例2:updateSale → payload type=贈送', () => {
   it('type 欄位為中文 label', async () => {
