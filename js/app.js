@@ -9,7 +9,7 @@ import * as online from './ui/online.js';
 import * as exporter from './ui/exporter.js';
 import { setUserId, onDataChanged, _closeDb } from './db.js';
 import { signInWithGoogle, signOutUser, onAuth } from './auth.js';
-import { CREATOR_UID, isEmulatorMode } from './firebase.js';
+import { CREATOR_UID, ALLOWED_EMAILS, isEmulatorMode } from './firebase.js';
 import { initMirror } from './mirror.js';
 
 const TITLES = {
@@ -139,22 +139,26 @@ onAuth(async (user) => {
     return;
   }
 
-  // 固定 UID 檢查(fail-closed:正式環境未填 CREATOR_UID = 拒絕所有人,
-  // 避免 runbook 漏填時 gate 靜默失效;emulator/e2e 下 null 放行)
-  if (CREATOR_UID === null && !isEmulatorMode) {
-    console.error('CREATOR_UID 未設定,拒絕登入(runbook 未完成)');
-    await signOutUser();
-    showLoginScreen('App 尚未完成設定(未綁定創作者帳號),請聯絡工程師');
-    return;
-  }
-  if (CREATOR_UID !== null && user.uid !== CREATOR_UID) {
-    console.warn('UID 不符,拒絕登入:', user.uid);
-    await signOutUser();
-    showLoginScreen('此帳號無權限');
-    return;
+  // email 白名單檢查(fail-closed:正式環境未設定/清空 ALLOWED_EMAILS = 拒絕所有人,
+  // 避免 runbook 漏填時 gate 靜默失效;emulator/e2e 下不檢查,方便測試)
+  if (!isEmulatorMode) {
+    if (!ALLOWED_EMAILS?.length) {
+      console.error('ALLOWED_EMAILS 未設定,拒絕登入(runbook 未完成)');
+      await signOutUser();
+      showLoginScreen('App 尚未完成設定(未綁定授權帳號),請聯絡工程師');
+      return;
+    }
+    // emailVerified 與 rules 的 email_verified 對齊(Google 登入恆為 true,此為縱深防禦);
+    // toLowerCase 依賴「Gmail 帳號 token email 為小寫 canonical 形態」前提,rules 端字面值即小寫
+    if (!user.emailVerified || !ALLOWED_EMAILS.includes(user.email?.toLowerCase())) {
+      console.warn('email 不在白名單或未驗證,拒絕登入:', user.email);
+      await signOutUser();
+      showLoginScreen('此帳號無權限');
+      return;
+    }
   }
 
-  setUserId(user.uid);
+  setUserId(CREATOR_UID);
   initMirror();
   showApp();
   // 確保 initNav 只跑一次

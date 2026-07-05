@@ -1,14 +1,14 @@
 // db.test.js — 連 Firestore Emulator。
 // 執行方式:npm run test:emulator(emulators:exec 自動注入 FIRESTORE_EMULATOR_HOST)。
-// M2 後 firestore.rules 鎖定 UID;本檔在 Auth emulator 以 admin API 建立
-// localId='FIXED_UID' 的帳號並登入 —— uid 正好等於 rules 的佔位字面值,
-// 讓資料層測試跑在「部署那份 rules」之下。rules 的 allow/deny 矩陣由 rules.test.js 負責。
+// M5 後 firestore.rules 鎖定 email 白名單;本檔在 Auth emulator 以 admin API 建立
+// email 屬於白名單且 emailVerified 的帳號並登入,讓資料層測試跑在「部署那份 rules」之下。
+// rules 的 allow/deny 矩陣由 rules.test.js 負責。
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { getAuth, signInWithEmailAndPassword } from 'firebase/auth';
 import { waitForPendingWrites } from 'firebase/firestore';
 import { app, db } from '../js/firebase.js';
 import { dateKey } from '../js/logic.js';
-import { RULES_UID } from './rules-uid.js';
+import { DATA_ROOT_UID, ALLOWED_EMAILS } from './rules-uid.js';
 import {
   addProduct, getAllProducts, getActiveProducts, setProductActive, getProduct, updateProduct,
   addSale, getSale, getSalesByDate, getSalesByOuting, getAllSales, updateSale, deleteSale, _closeDb,
@@ -25,8 +25,8 @@ const AUTH_CLEAR_URL = `http://${AUTH_EMULATOR_HOST}/emulator/v1/projects/${PROJ
 // Auth emulator 中,Bearer token 只要非空字串即被視為 admin mode
 // 這讓 /v1/projects/{id}/accounts POST 允許指定 localId
 const FAKE_ADMIN_BEARER = 'owner';
-const DB_TEST_UID = RULES_UID;
-const DB_TEST_EMAIL = 'dbtest@test.local';
+const DB_TEST_UID = DATA_ROOT_UID;
+const DB_TEST_EMAIL = ALLOWED_EMAILS[0];
 const DB_TEST_PASSWORD = 'test-password-123';
 
 let auth;
@@ -55,6 +55,7 @@ beforeAll(async () => {
         localId: DB_TEST_UID,
         email: DB_TEST_EMAIL,
         password: DB_TEST_PASSWORD,
+        emailVerified: true,
         returnSecureToken: true,
       }),
     },

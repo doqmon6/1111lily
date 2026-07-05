@@ -24,11 +24,14 @@ const firebaseConfig = {
   appId: '1:335096125048:web:86a78b32b028623c20ff8d',
 };
 
-// 固定 UID:runbook 部署時「必須」改為創作者真實 UID(Firebase Console → Authentication → User UID)。
-// ⚠️ 留 null 上線 = App 登入 gate 直接拒絕所有人(fail-closed,提示「尚未完成設定」);
-//    資料層另有 firestore.rules 以 FIXED_UID 把關,雙防線互相獨立。
-// emulator / e2e(?emu=1 + localhost)下 null 視為不檢查,方便測試。
+// 固定資料根 uid:兩位白名單使用者共用同一本帳,所有 Firestore 文件路徑都寫入此 uid
+// (與 firestore.rules 路徑守衛的字面值一致)。M5 後授權判準已改為 email 白名單(見下方
+// ALLOWED_EMAILS),此常數不再用於登入比對,僅作為 setUserId() 的固定目標。
 export const CREATOR_UID = 'fEMuo2pogUXx6eKz3Ct33zSt9aM2';
+
+// 授權白名單:僅此兩個 email(且 email_verified 必須為 true)可登入並存取上方固定資料根。
+// 與 firestore.rules 的 isAllowed() 白名單字面值一致,兩處須同步維護。
+export const ALLOWED_EMAILS = ['doqmon6@gmail.com', '1111l.i.lilyshu@gmail.com'];
 
 const isNodeEmulator = typeof process !== 'undefined' && !!process.env.FIRESTORE_EMULATOR_HOST;
 const isBrowserEmu =

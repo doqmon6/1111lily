@@ -1,29 +1,32 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // 把 fEMuo2pogUXx6eKz3Ct33zSt9aM2 換成創作者的 Firebase Auth UID(runbook M7 執行)
-    function isCreator() {
-      return request.auth != null && request.auth.uid == 'fEMuo2pogUXx6eKz3Ct33zSt9aM2';
+    // 雙人 email 白名單:創作者 + 一位協作者,兩人共用同一本固定資料根(uid 不變)。
+    // 白名單為小寫字面值:依賴 Google 對 Gmail 帳號回傳小寫 canonical email;
+    // 若未來納入非 Gmail(如 Workspace 網域)帳號,需改用 .lower() 正規化再比對。
+    function isAllowed() {
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && request.auth.token.email in ['doqmon6@gmail.com', '1111l.i.lilyshu@gmail.com'];
     }
 
-    // changelog:append-only —— 允許新增與讀取,禁止修改/刪除
-    // 必須放在外層 read/write 之前宣告,但 Firestore rules 是 OR 邏輯:
-    // 要讓此處的 deny 生效,外層 {document=**} 不可再允許 changelog 的 update/delete。
-    // 因此外層僅允許 read,各子集合分別允許 write;changelog 不在 write 清單。
+    // changelog:append-only —— 允許新增與讀取,禁止修改/刪除。
+    // 本檔刻意沒有外層萬用 match({document=**}):Firestore rules 是 OR 邏輯,
+    // 任何外層 allow 都會蓋過這裡的 deny;各子集合各自守衛、其餘預設 deny,勿補回外層 match。
     match /users/{uid}/changelog/{changeId} {
-      allow read, create: if isCreator() && uid == 'fEMuo2pogUXx6eKz3Ct33zSt9aM2';
+      allow read, create: if isAllowed() && uid == 'fEMuo2pogUXx6eKz3Ct33zSt9aM2';
       allow update, delete: if false;
     }
 
     // products / sales / outings:完整讀寫
     match /users/{uid}/products/{docId} {
-      allow read, write: if isCreator() && uid == 'fEMuo2pogUXx6eKz3Ct33zSt9aM2';
+      allow read, write: if isAllowed() && uid == 'fEMuo2pogUXx6eKz3Ct33zSt9aM2';
     }
     match /users/{uid}/sales/{docId} {
-      allow read, write: if isCreator() && uid == 'fEMuo2pogUXx6eKz3Ct33zSt9aM2';
+      allow read, write: if isAllowed() && uid == 'fEMuo2pogUXx6eKz3Ct33zSt9aM2';
     }
     match /users/{uid}/outings/{docId} {
-      allow read, write: if isCreator() && uid == 'fEMuo2pogUXx6eKz3Ct33zSt9aM2';
+      allow read, write: if isAllowed() && uid == 'fEMuo2pogUXx6eKz3Ct33zSt9aM2';
     }
   }
 }

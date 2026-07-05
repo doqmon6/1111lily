@@ -1,11 +1,11 @@
 // changelog.test.js — M4 append-only 修改歷史(Firestore Emulator)。
 // 執行方式:npm run test:emulator。
-// 模式抄 migrate.test.js:Auth emulator FIXED_UID + beforeEach 清庫輪詢歸零。
+// 模式抄 migrate.test.js:Auth emulator 白名單 email + beforeEach 清庫輪詢歸零。
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import { getAuth, signInWithEmailAndPassword } from 'firebase/auth';
 import { waitForPendingWrites } from 'firebase/firestore';
 import { app, db } from '../js/firebase.js';
-import { RULES_UID } from './rules-uid.js';
+import { DATA_ROOT_UID, ALLOWED_EMAILS } from './rules-uid.js';
 import {
   addSale, updateSale, deleteSale, getAllSales, getAllOutings, getAllProducts,
   getChangelog, setUserId,
@@ -29,13 +29,13 @@ beforeAll(async () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer owner' },
       body: JSON.stringify({
-        localId: RULES_UID, email: 'changelog@test.local', password: 'test-password-123',
-        returnSecureToken: true,
+        localId: DATA_ROOT_UID, email: ALLOWED_EMAILS[0], password: 'test-password-123',
+        emailVerified: true, returnSecureToken: true,
       }),
     },
   );
-  await signInWithEmailAndPassword(auth, 'changelog@test.local', 'test-password-123');
-  setUserId(RULES_UID);
+  await signInWithEmailAndPassword(auth, ALLOWED_EMAILS[0], 'test-password-123');
+  setUserId(DATA_ROOT_UID);
 });
 
 beforeEach(async () => {

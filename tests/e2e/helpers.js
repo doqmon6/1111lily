@@ -1,6 +1,6 @@
 // e2e 共用 helper:emulator 模式登入 + 資料隔離清除。
 // 所有 spec 在 emulator 模式下跑:URL 帶 ?emu=1,Auth emulator 完成登入。
-import { RULES_UID } from '../rules-uid.js';
+import { DATA_ROOT_UID, ALLOWED_EMAILS } from '../rules-uid.js';
 
 const PROJECT_ID = 'demo-market-sales';
 const FIRESTORE_CLEAR_URL = `http://localhost:8080/emulator/v1/projects/${PROJECT_ID}/databases/(default)/documents`;
@@ -17,13 +17,13 @@ export async function clearAuthAccounts() {
   await fetch(AUTH_CLEAR_URL, { method: 'DELETE', headers: { Authorization: 'Bearer owner' } });
 }
 
-const E2E_EMAIL = 'e2e@test.local';
+const E2E_EMAIL = ALLOWED_EMAILS[0];
 const E2E_PASSWORD = 'e2e-password-123';
 
 /**
- * 以 admin REST 在 Auth emulator 預建 localId='FIXED_UID' 的帳號。
- * uid 必須是 'FIXED_UID':firestore.rules 以字面值 'FIXED_UID' 放行,
- * 讓 e2e 跑在「部署那份 rules」之下(與 db.test.js 同一技巧)。
+ * 以 admin REST 在 Auth emulator 預建帳號(email 屬白名單、emailVerified:true)。
+ * firestore.rules 以 email 白名單 + email_verified 把關,讓 e2e 跑在「部署那份 rules」之下
+ * (與 db.test.js 同一技巧)。
  * 註:signInWithCredential 的假 token 不會拿 sub 當 uid(emulator 隨機發),
  * 只有 admin API 的 localId 能指定 uid,故走 email/password。
  */
@@ -34,16 +34,17 @@ async function ensureCreatorAccount() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer owner' },
       body: JSON.stringify({
-        localId: RULES_UID,
+        localId: DATA_ROOT_UID,
         email: E2E_EMAIL,
         password: E2E_PASSWORD,
+        emailVerified: true,
         returnSecureToken: true,
       }),
     },
   );
 }
 
-/** 在 page 內完成 emulator 登入(uid='FIXED_UID')。需先以 ?emu=1 開啟頁面。 */
+/** 在 page 內完成 emulator 登入(白名單 email)。需先以 ?emu=1 開啟頁面。 */
 export async function loginWithEmulator(page) {
   await ensureCreatorAccount();
   await page.evaluate(
