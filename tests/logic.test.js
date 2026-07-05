@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   computeTotal, summarizeDay, dateKey, formatMoney,
   outingRevenue, sumFixedCosts, soldCost, outingNet, productAggregate, ranking,
-  toSalesCSV, toProductSummaryCSV, saleChangeSummary,
+  toSalesCSV, toProductSummaryCSV, saleChangeSummary, itemsSummary, onlineCreatedAt,
 } from '../js/logic.js';
 
 describe('computeTotal', () => {
@@ -20,6 +20,32 @@ describe('dateKey', () => {
   });
   it('月日補零', () => {
     expect(dateKey(new Date(2026, 0, 3))).toBe('2026-01-03');
+  });
+});
+
+describe('onlineCreatedAt', () => {
+  const now = new Date(2026, 4, 30, 14, 22, 8); // 記帳當下時分秒
+
+  it('dateKey(結果) 等於選定日期', () => {
+    const result = onlineCreatedAt('2026-05-01', now);
+    expect(dateKey(new Date(result))).toBe('2026-05-01');
+  });
+
+  it('時分秒等於 now 的時分秒', () => {
+    const result = onlineCreatedAt('2026-05-01', now);
+    const d = new Date(result);
+    expect(d.getHours()).toBe(14);
+    expect(d.getMinutes()).toBe(22);
+    expect(d.getSeconds()).toBe(8);
+  });
+
+  it('dateStr 為空時回退 now', () => {
+    expect(onlineCreatedAt('', now)).toBe(now.toISOString());
+    expect(onlineCreatedAt(undefined, now)).toBe(now.toISOString());
+  });
+
+  it('dateStr 格式不符時回退 now', () => {
+    expect(onlineCreatedAt('not-a-date', now)).toBe(now.toISOString());
   });
 });
 
@@ -56,7 +82,7 @@ describe('toSalesCSV', () => {
   });
   it('帶出場次名、類型、明細、總額、付款方式', () => {
     const csv = toSalesCSV(sales, { o1: '玩具展' });
-    expect(csv).toContain('玩具展,正常銷售,手鍊×2; 耳環×1,350,現金');
+    expect(csv).toContain('玩具展,正常銷售,手鍊×2、耳環×1,350,現金');
   });
   it('贈送顯示類型;逗號與引號跳脫', () => {
     const csv = toSalesCSV([{
@@ -86,6 +112,13 @@ describe('formatMoney', () => {
   it('千分位', () => {
     expect(formatMoney(1234)).toBe('$1,234');
     expect(formatMoney(0)).toBe('$0');
+  });
+});
+
+describe('itemsSummary', () => {
+  it('多品項以、分隔', () => {
+    const items = [{ name: 'A', qty: 1 }, { name: 'B', qty: 2 }];
+    expect(itemsSummary(items)).toBe('A×1、B×2');
   });
 });
 

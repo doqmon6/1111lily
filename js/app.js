@@ -1,12 +1,12 @@
 // App 殼:登入 gate + 分頁切換 + Service Worker 註冊。
-// 登入流程:onAuth → 有 user → setUserId + ensureMigrated → showApp
+// 登入流程:onAuth → 有 user → setUserId → showApp
 //           onAuth → null → showLoginScreen
 // 每個分頁模組提供 init(el)(首次建立)與選用的 show()(每次顯示時刷新資料)。
 import * as products from './ui/products.js';
 import * as sale from './ui/sale.js';
 import * as outing from './ui/outing.js';
 import * as exporter from './ui/exporter.js';
-import { ensureMigrated, setUserId, onDataChanged, _closeDb } from './db.js';
+import { setUserId, onDataChanged, _closeDb } from './db.js';
 import { signInWithGoogle, signOutUser, onAuth } from './auth.js';
 import { CREATOR_UID, isEmulatorMode } from './firebase.js';
 import { initMirror } from './mirror.js';
@@ -152,12 +152,6 @@ onAuth(async (user) => {
   }
 
   setUserId(user.uid);
-  try {
-    await ensureMigrated();
-  } catch (err) {
-    console.error('資料遷移失敗', err);
-  }
-
   initMirror();
   showApp();
   // 確保 initNav 只跑一次

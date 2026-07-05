@@ -25,6 +25,18 @@ export function dateKey(date = new Date()) {
   return `${y}-${m}-${d}`;
 }
 
+/**
+ * 線上筆 createdAt 建構:選定日期(本地 YYYY-MM-DD,如 online 表單的 dateStr)
+ * + now 的時分秒,以 new Date(y, m-1, d, hh, mm, ss) 本地建構,避免
+ * new Date('YYYY-MM-DD') 被當 UTC 午夜的時區陷阱。dateStr 空/格式不符時回退 now。
+ */
+export function onlineCreatedAt(dateStr, now = new Date()) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr ?? '');
+  if (!match) return now.toISOString();
+  const [y, m, d] = [match[1], match[2], match[3]].map(Number);
+  return new Date(y, m - 1, d, now.getHours(), now.getMinutes(), now.getSeconds()).toISOString();
+}
+
 /** 當日彙總:總額、筆數、各付款方式小計。 */
 export function summarizeDay(sales) {
   const summary = { total: 0, count: sales.length, byMethod: { cash: 0, transfer: 0 } };
@@ -39,6 +51,11 @@ export function summarizeDay(sales) {
 
 export function formatMoney(n) {
   return '$' + Number(n).toLocaleString('en-US');
+}
+
+/** 品項人讀彙總:單一來源,CSV / mirror / diff / UI 共用,分隔符統一 `、`。 */
+export function itemsSummary(items) {
+  return items.map((i) => `${i.name}×${i.qty}`).join('、');
 }
 
 // ---- 場次(outing)彙總 ----
@@ -120,7 +137,7 @@ export function toSalesCSV(sales, outingNameById = {}) {
     const date = dateKey(dt);
     const time = String(dt.getHours()).padStart(2, '0') + ':' + String(dt.getMinutes()).padStart(2, '0');
     const outing = outingNameById[s.outingId] ?? '';
-    const detail = s.items.map((it) => `${it.name}×${it.qty}`).join('; ');
+    const detail = itemsSummary(s.items);
     lines.push([date, time, outing, typeLabel(s.type), detail, s.total, paymentLabel(s.paymentMethod)].map(csvCell).join(','));
   }
   return BOM + lines.join('\r\n');
@@ -143,7 +160,7 @@ export function saleChangeSummary(before, after) {
   if (before.paymentMethod !== after.paymentMethod) {
     changes.push(`付款 ${paymentLabel(before.paymentMethod)} → ${paymentLabel(after.paymentMethod)}`);
   }
-  const itemsStr = (items) => (items ?? []).map((i) => `${i.name}×${i.qty}`).join('、');
+  const itemsStr = (items) => itemsSummary(items ?? []);
   const bStr = itemsStr(before.items);
   const aStr = itemsStr(after.items);
   if (bStr !== aStr) {

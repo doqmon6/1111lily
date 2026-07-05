@@ -11,8 +11,8 @@ import { dateKey } from '../js/logic.js';
 import { RULES_UID } from './rules-uid.js';
 import {
   addProduct, getAllProducts, getActiveProducts, setProductActive, getProduct, updateProduct,
-  addSale, getSalesByDate, getSalesByOuting, getAllSales, updateSale, deleteSale, _closeDb,
-  addOuting, getAllOutings, getOpenOuting, closeOuting, ensureMigrated,
+  addSale, getSale, getSalesByDate, getSalesByOuting, getAllSales, updateSale, deleteSale, _closeDb,
+  addOuting, getAllOutings, getOpenOuting, closeOuting,
   setUserId,
 } from '../js/db.js';
 
@@ -224,27 +224,32 @@ describe('pending overlay(未 ack 寫入的 read-your-write)', () => {
   });
 });
 
-describe('v1 → v2 遷移', () => {
-  it('舊銷售(無 outingId)升級後保留,並歸入已關閉的「舊紀錄」場次', async () => {
-    // Firestore 版:直接以 addSale 寫入無 outingId 的銷售模擬舊資料
-    await addSale({
-      items: [{ productId: 'p', name: '舊商品', price: 100, qty: 1 }],
-      total: 100, paymentMethod: 'cash',
+describe('線上筆(outingId: null)', () => {
+  it('讀取後仍為 null,不被歸入其他場次(無 v1→v2 遷移)', async () => {
+    const s = await addSale({
+      items: [{ productId: 'p', name: '線上商品', price: 100, qty: 1 }],
+      total: 100, paymentMethod: 'transfer', outingId: null,
       createdAt: '2026-05-01T01:00:00.000Z',
     });
+    expect(s.outingId).toBeNull();
+    expect((await getSale(s.id)).outingId).toBeNull();
+    expect(await getAllOutings()).toHaveLength(0);
+  });
+});
 
-    const legacy = await ensureMigrated();
-    expect(legacy.name).toBe('舊紀錄');
-    expect(legacy.status).toBe('closed');
+describe('note 欄位', () => {
+  it('addSale 帶 note,讀回原值', async () => {
+    const s = await addSale({
+      items: [], total: 0, paymentMethod: 'cash', createdAt: '2026-05-30T01:00:00.000Z',
+      note: 'IG @foo',
+    });
+    expect(s.note).toBe('IG @foo');
+    const got = await getSale(s.id);
+    expect(got.note).toBe('IG @foo');
+  });
 
-    const all = await getAllSales();
-    expect(all).toHaveLength(1);
-    expect(all[0].total).toBe(100);
-    expect(all[0].outingId).toBe(legacy.id);
-
-    expect(await getSalesByOuting(legacy.id)).toHaveLength(1);
-    // 冪等:再跑一次不再建場次、不重複處理
-    expect(await ensureMigrated()).toBeNull();
-    expect(await getAllOutings()).toHaveLength(1);
+  it('不給 note 讀回空字串', async () => {
+    const s = await addSale({ items: [], total: 0, paymentMethod: 'cash', createdAt: '2026-05-30T01:00:00.000Z' });
+    expect(s.note).toBe('');
   });
 });

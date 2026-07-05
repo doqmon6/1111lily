@@ -39,11 +39,13 @@ async function sell(page, name, times = 1) {
 const revenueStat = (page) => page.locator('#view-outing .stat', { hasText: '收入' });
 const netStat = (page) => page.locator('#view-outing .stat', { hasText: '淨額' });
 
-test('尚未開始場次時無法結帳', async ({ page }) => {
+test('尚未開始場次時自動線上模式,可直接結帳(死路消除)', async ({ page }) => {
   await addProduct(page, '貼紙', 30);
   await sell(page, '貼紙', 1);
+  await expect(page.locator('#sale-target')).toHaveValue('online');
   await page.click('#checkout-btn');
-  await expect(page.locator('#sale-msg')).toContainText('尚未開始場次');
+  await expect(page.locator('#sale-msg')).toContainText('已記錄');
+  await expect(page.locator('#today-total')).toHaveText('$30');
 });
 
 test('開始場次後記銷售,場次收入正確', async ({ page }) => {
@@ -88,15 +90,16 @@ test('淨額 = 收入 − 出貨成本 − 固定成本', async ({ page }) => {
   await expect(netStat(page)).toContainText('$100');
 });
 
-test('關閉場次後無法再記銷售', async ({ page }) => {
+test('關閉場次後記銷售自動改為線上', async ({ page }) => {
   await addProduct(page, '貼紙', 30);
   await startOuting(page, '一日場');
   await page.locator('.tab[data-target="outing"]').click();
   await page.getByRole('button', { name: '關閉場次' }).click();
 
   await sell(page, '貼紙', 1);
+  await expect(page.locator('#sale-target')).toHaveValue('online');
   await page.click('#checkout-btn');
-  await expect(page.locator('#sale-msg')).toContainText('尚未開始場次');
+  await expect(page.locator('#sale-msg')).toContainText('已記錄');
 });
 
 test('停售已帶貨商品後編輯場次,帶貨量不遺失', async ({ page }) => {

@@ -23,10 +23,10 @@
 - **庫存(帶貨/剩貨)** — v2 以場次帶貨清單 + `剩餘 = 帶 − 出貨` 實作(非即時扣庫存,而是場次盤點)。
 - **商品成本 / 逐品項分析** — v2 商品成本 + 商品彙總 CSV + 好賣排行/滯銷。
 - **自動化 E2E(Playwright)** — v2 已全面以 Playwright/Chromium e2e 覆蓋(真 IndexedDB / 真 SW)。
+- **人讀明細分隔符不一致(v3)** — 已於 2026-07-05 規格統一為 `、`(`itemsSummary` 單一來源,`toSalesCSV`/`mirror.js`/`saleChangeSummary`/`outing.js` 共用)。
 
 ## 技術債 / 重新評估點
 
 - **UI 框架** — 現採零相依、免建置原生 PWA。v2 後 `js/ui/outing.js` 已是較大的命令式 DOM 模組;若再顯著膨脹、難維護,重新評估輕量框架(Svelte/Vue + Vite + vite-plugin-pwa)。
-- **人讀明細分隔符不一致(v3)** — CSV `toSalesCSV` 用 `; `、Sheets 鏡像與修改歷史用 `、`。鏡像格式符合規格範例,CSV 是既有格式(改了會影響使用者既有對帳習慣),v3 不動。重啟觸發:使用者反映兩處對帳時混淆。
 - **changelog 無限成長(v3)** — 每次銷售增改刪都留一筆,啟動時全量進記憶體 store。單人數年量級(數千筆)無虞。重啟觸發:啟動變慢或 Firestore 讀數逼近免費額度 → 改 on-demand 分頁載入。
 - **編輯器/表單開啟時的遠端更新(v3)** — view.isBusy() 期間跳過自動重繪(保護輸入不被洗掉),期間遠端變更延後到關閉表單後才呈現;極端情境(兩裝置同時編同一筆)以 last-write-wins + changelog 追溯兜底。重啟觸發:真的出現多人同時操作需求。

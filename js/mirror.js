@@ -8,7 +8,7 @@
 //   initMirror()     — 登入成功後由 app.js 呼叫一次(掛 online listener + 初始 flush)
 //   _setUrl(u)       — 測試 hook,覆寫運行期 URL
 import { APPS_SCRIPT_URL } from './firebase.js';
-import { typeLabel, paymentLabel } from './logic.js';
+import { typeLabel, paymentLabel, itemsSummary } from './logic.js';
 import { onSaleWritten, getSale, getOuting } from './db.js';
 
 const QUEUE_KEY = 'market-sales:mirror-queue';
@@ -45,7 +45,7 @@ function salePayload(sale, outingName) {
   const dt = new Date(sale.createdAt);
   const date = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
   const time = `${String(dt.getHours()).padStart(2, '0')}:${String(dt.getMinutes()).padStart(2, '0')}`;
-  const items = (sale.items ?? []).map((it) => `${it.name}×${it.qty}`).join('、');
+  const items = itemsSummary(sale.items ?? []);
   return {
     id: sale.id,
     date,

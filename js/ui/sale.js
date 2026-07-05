@@ -1,11 +1,14 @@
 // 記銷售熱路徑:點商品加入購物車 → 調數量 → 選付款方式 → 完成。
 // 一筆可含多商品;總額自動加總;存檔後即時更新「今天累計」。支援現場新增商品。
 import { getActiveProducts, addProduct, addSale, getSalesByDate, getOpenOuting } from '../db.js';
-import { computeTotal, outingRevenue, dateKey, formatMoney } from '../logic.js';
+import { computeTotal, outingRevenue, dateKey, formatMoney, onlineCreatedAt } from '../logic.js';
 import { el } from './dom.js';
 
 let container;
 let cart = [];
+// 記帳目標的使用者手動選擇(場次開始/結束時重置為預設值,見 refreshToday)。
+let lastOutingId = undefined;
+let manualTarget = null;
 
 export async function init(viewEl) {
   container = viewEl;
@@ -24,6 +27,20 @@ export async function init(viewEl) {
       el('h2', { text: '本筆明細' }),
       el('ul', { id: 'cart', class: 'list' }),
       el('div', { class: 'cart-total' }, '合計 ', el('strong', { id: 'cart-total', text: '$0' })),
+      el('label', { class: 'field' }, '記帳目標',
+        el('select', { id: 'sale-target', onChange: onTargetChange },
+          el('option', { value: 'outing', text: '本場次' }),
+          el('option', { value: 'online', text: '線上' }),
+        ),
+      ),
+      el('div', { id: 'online-fields', hidden: true },
+        el('label', { class: 'field' }, '日期',
+          el('input', { id: 'online-date', type: 'date', value: dateKey(new Date()) }),
+        ),
+        el('label', { class: 'field' }, '備註',
+          el('input', { id: 'online-note', type: 'text', maxlength: 200, placeholder: '買家 IG / 備註(選填)' }),
+        ),
+      ),
       el('label', { class: 'field' }, '付款方式',
         el('select', { id: 'pay-method' },
           el('option', { value: 'cash', text: '現金' }),
@@ -120,27 +137,39 @@ async function onCheckout() {
     return;
   }
   checkingOut = true;
-  // 快照(明細/付款/類型)+ 清空購物車必須在點擊當下的「同步段」完成:
-  // 任何 await 之後才讀,期間使用者的點商品/改類型都會污染這一筆(實測踩到的競態)。
+  // 快照(明細/付款/類型/目標/日期/備註)+ 清空購物車必須在點擊當下的「同步段」完成:
+  // 任何 await 之後才讀,期間使用者的點商品/改類型/切目標都會污染這一筆(實測踩到的競態)。
   const paymentMethod = container.querySelector('#pay-method').value;
   const type = container.querySelector('#sale-type').value;
+  const target = container.querySelector('#sale-target').value;
+  const dateStr = container.querySelector('#online-date').value;
+  const note = container.querySelector('#online-note').value.trim();
+  const now = new Date();
   const snapshot = cart;
   cart = [];
   container.querySelector('#sale-type').value = 'sale';
   renderCart();
   try {
-    const outing = await getOpenOuting();
-    if (!outing) {
-      // 還原:這筆沒送出,把快照(與期間新點的商品)合併回購物車
-      cart = [...snapshot, ...cart];
-      container.querySelector('#sale-type').value = type;
-      renderCart();
-      showMsg('尚未開始場次,請先到「場次」分頁開始一場擺攤', true);
-      return;
-    }
     const items = snapshot.map((i) => ({ productId: i.productId, name: i.name, price: i.price, cost: i.cost ?? 0, qty: i.qty }));
     const total = computeTotal(items);
-    await addSale({ items, total, paymentMethod, outingId: outing.id, type });
+    if (target === 'online') {
+      const createdAt = onlineCreatedAt(dateStr, now);
+      await addSale({ items, total, paymentMethod, type, outingId: null, note, createdAt });
+      // 備註是「這一筆買家」的資訊,結帳成功後清空避免下一筆沿用;
+      // 日期刻意保留不重置(方便同一天連續補記多筆舊匯款)。
+      container.querySelector('#online-note').value = '';
+    } else {
+      const outing = await getOpenOuting();
+      if (!outing) {
+        // 還原:這筆沒送出,把快照(與期間新點的商品)合併回購物車
+        cart = [...snapshot, ...cart];
+        container.querySelector('#sale-type').value = type;
+        renderCart();
+        showMsg('該場次已結束,請改選「線上」記帳', true);
+        return;
+      }
+      await addSale({ items, total, paymentMethod, outingId: outing.id, type });
+    }
     await refreshToday();
     const label = type === 'sale' ? '已記錄一筆 ' + formatMoney(total) : '已記錄(不計營收)';
     showMsg(label, false);
@@ -149,11 +178,38 @@ async function onCheckout() {
   }
 }
 
+function updateOnlineFieldsVisibility() {
+  const isOnline = container.querySelector('#sale-target').value === 'online';
+  container.querySelector('#online-fields').hidden = !isOnline;
+}
+
+function onTargetChange() {
+  manualTarget = container.querySelector('#sale-target').value;
+  updateOnlineFieldsVisibility();
+}
+
 async function refreshToday() {
   const outing = await getOpenOuting();
+  const outingId = outing?.id ?? null;
+  if (outingId !== lastOutingId) {
+    manualTarget = null; // 場次開始/結束 → 重置為預設(有場次預設場次,無場次強制線上)
+    lastOutingId = outingId;
+  }
+
   const banner = container.querySelector('#active-outing');
-  if (outing) banner.replaceChildren(el('span', { text: '目前場次:' }), el('strong', { text: outing.name }));
-  else banner.replaceChildren(el('span', { class: 'warn', text: '尚未開始場次 — 到「場次」分頁開始一場才能記銷售' }));
+  const targetSelect = container.querySelector('#sale-target');
+  const outingOption = targetSelect.querySelector('option[value="outing"]');
+  if (outing) {
+    banner.replaceChildren(el('span', { text: '目前場次:' }), el('strong', { text: outing.name }));
+    outingOption.hidden = false;
+    outingOption.textContent = outing.name;
+    targetSelect.value = manualTarget ?? 'outing';
+  } else {
+    banner.replaceChildren(el('span', { text: '目前為線上銷售' }));
+    outingOption.hidden = true;
+    targetSelect.value = 'online';
+  }
+  updateOnlineFieldsVisibility();
 
   const sales = await getSalesByDate(dateKey(new Date()));
   container.querySelector('#today-summary').replaceChildren(

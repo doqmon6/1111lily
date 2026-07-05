@@ -227,7 +227,7 @@ function makeChangelogEntry({ entityId, action, before, after }) {
 
 // writeBatch 版本:sale 文件 + changelog 文件 同批提交,保證原子性。
 // 兩者共用同一個 commit promise,各自呼叫 track() 維護 pending overlay 不變式。
-export async function addSale({ items, total, paymentMethod, createdAt, outingId = null, type = 'sale' }) {
+export async function addSale({ items, total, paymentMethod, createdAt, outingId = null, type = 'sale', note = '' }) {
   const ts = createdAt ?? new Date().toISOString();
   const sale = {
     id: crypto.randomUUID(),
@@ -236,6 +236,7 @@ export async function addSale({ items, total, paymentMethod, createdAt, outingId
     paymentMethod,
     outingId,
     type,
+    note,
     createdAt: ts,
     dateKey: dateKey(new Date(ts)),
   };
@@ -381,21 +382,4 @@ export async function importAll({ products = [], sales = [], outings = [] }) {
     return p;
   });
   await Promise.all(acks);
-}
-
-const LEGACY_OUTING_NAME = '舊紀錄';
-
-// v1 → v2 一次性遷移:把沒有場次的舊銷售歸入一個已關閉的「舊紀錄」場次,讓場次報表一致。
-// 冪等:沒有孤兒銷售時不做任何事。
-export async function ensureMigrated() {
-  const sales = await getAllSales();
-  const orphans = sales.filter((s) => !s.outingId);
-  if (!orphans.length) return null;
-  const outings = await getAllOutings();
-  let legacy = outings.find((o) => o.name === LEGACY_OUTING_NAME);
-  if (!legacy) legacy = await addOuting({ name: LEGACY_OUTING_NAME, status: 'closed' });
-  for (const s of orphans) {
-    await updateSale({ ...s, outingId: legacy.id, type: s.type ?? 'sale' });
-  }
-  return legacy;
 }

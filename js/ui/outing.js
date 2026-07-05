@@ -6,7 +6,7 @@ import {
 } from '../db.js';
 import {
   summarizeDay, soldCost, sumFixedCosts, outingNet,
-  productAggregate, ranking, computeTotal, formatMoney, paymentLabel, typeLabel, dateKey,
+  productAggregate, ranking, computeTotal, formatMoney, paymentLabel, typeLabel, dateKey, itemsSummary,
 } from '../logic.js';
 import { el } from './dom.js';
 
@@ -245,10 +245,6 @@ function renderSpecials(specials) {
 function timeOf(iso) {
   const d = new Date(iso);
   return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
-}
-
-function itemsSummary(items) {
-  return items.map((i) => `${i.name}×${i.qty}`).join('、');
 }
 
 function renderSalesList(sales) {
