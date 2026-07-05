@@ -84,6 +84,6 @@ export const isEmulatorMode = isBrowserEmu || isNodeEmulator;
 
 // M6 Sheets 鏡像端點。runbook 部署時填入 Apps Script Web App URL。
 // null = 鏡像停用;mirror.js 讀此值,安靜 no-op。
-export const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxS2mMZgbchU0MI89KBCEBnB0r_0sif6Q4SEPX9YCwuUDP94T7dTFyWSgmfgELwhOR9/exec';
+export const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxszSccPsLXzDqKxno-ely6HfZrHUbHyWFBe_FJkl6j1r2OVzdC-492Zo9jAO1qFOqK/exec';
 
 export { app, db };
