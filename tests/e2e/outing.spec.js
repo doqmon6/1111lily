@@ -132,6 +132,19 @@ test('編輯一筆改類型為贈送,收入不再計入', async ({ page }) => {
   await expect(revenueStat(page)).toContainText('$0');
 });
 
+test('場次銷售可補備註', async ({ page }) => {
+  await addProduct(page, '耳環', 150);
+  await startOuting(page, '松菸');
+  await sell(page, '耳環', 1);
+  await page.click('#checkout-btn');
+
+  await page.locator('.tab[data-target="outing"]').click();
+  await page.locator('#sales-list .sale-row').getByRole('button', { name: '編輯' }).click();
+  await page.locator('.edit-note').fill('IG @bar');
+  await page.locator('#sales-list').getByRole('button', { name: '儲存' }).click();
+  await expect(page.locator('#sales-list')).toContainText('IG @bar');
+});
+
 test('刪除一筆後從明細消失', async ({ page }) => {
   await addProduct(page, '貼紙', 30);
   await startOuting(page, '一日場');

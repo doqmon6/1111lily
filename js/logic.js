@@ -130,15 +130,15 @@ const BOM = '﻿';
 
 /** 銷售明細 CSV:一列一筆。欄位含場次與類型,不再放冗餘的「件數」。Excel 開繁中不亂碼。 */
 export function toSalesCSV(sales, outingNameById = {}) {
-  const header = ['日期', '時間', '場次', '類型', '商品明細', '總金額', '付款方式'];
+  const header = ['日期', '時間', '場次', '類型', '商品明細', '總金額', '付款方式', '備註'];
   const lines = [header.map(csvCell).join(',')];
   for (const s of sales) {
     const dt = new Date(s.createdAt);
     const date = dateKey(dt);
     const time = String(dt.getHours()).padStart(2, '0') + ':' + String(dt.getMinutes()).padStart(2, '0');
-    const outing = outingNameById[s.outingId] ?? '';
+    const outing = s.outingId == null ? '線上' : (outingNameById[s.outingId] ?? '');
     const detail = itemsSummary(s.items);
-    lines.push([date, time, outing, typeLabel(s.type), detail, s.total, paymentLabel(s.paymentMethod)].map(csvCell).join(','));
+    lines.push([date, time, outing, typeLabel(s.type), detail, s.total, paymentLabel(s.paymentMethod), s.note ?? ''].map(csvCell).join(','));
   }
   return BOM + lines.join('\r\n');
 }
@@ -165,6 +165,11 @@ export function saleChangeSummary(before, after) {
   const aStr = itemsStr(after.items);
   if (bStr !== aStr) {
     changes.push(`明細 ${bStr} → ${aStr}`);
+  }
+  const bNote = before.note ?? '';
+  const aNote = after.note ?? '';
+  if (bNote !== aNote) {
+    changes.push(`備註 ${bNote || '(無)'} → ${aNote || '(無)'}`);
   }
   return changes;
 }

@@ -55,6 +55,7 @@ function salePayload(sale, outingName) {
     items,
     total: sale.total,
     payment: paymentLabel(sale.paymentMethod),
+    note: sale.note ?? '',
     deleted: false,
   };
 }
@@ -83,7 +84,9 @@ async function flush() {
           payload = { id, deleted: true };
         } else {
           let outingName = '';
-          if (sale.outingId) {
+          if (sale.outingId == null) {
+            outingName = '線上';
+          } else {
             const outing = await getOuting(sale.outingId);
             outingName = outing?.name ?? '';
           }

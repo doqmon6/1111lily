@@ -72,17 +72,18 @@ describe('toSalesCSV', () => {
   const sales = [{
     items: [{ name: '手鍊', price: 100, qty: 2 }, { name: '耳環', price: 150, qty: 1 }],
     total: 350, paymentMethod: 'cash', type: 'sale', outingId: 'o1', createdAt: '2026-05-30T01:05:00.000Z',
+    note: 'IG @foo',
   }];
 
-  it('含 UTF-8 BOM、新表頭(有場次/類型、無冗餘件數)', () => {
+  it('含 UTF-8 BOM、新表頭(有場次/類型/備註、無冗餘件數)', () => {
     const csv = toSalesCSV(sales, { o1: '玩具展' });
     expect(csv.charCodeAt(0)).toBe(0xfeff);
-    expect(csv).toContain('日期,時間,場次,類型,商品明細,總金額,付款方式');
+    expect(csv).toContain('日期,時間,場次,類型,商品明細,總金額,付款方式,備註');
     expect(csv).not.toContain('件數');
   });
-  it('帶出場次名、類型、明細、總額、付款方式', () => {
+  it('帶出場次名、類型、明細、總額、付款方式、備註', () => {
     const csv = toSalesCSV(sales, { o1: '玩具展' });
-    expect(csv).toContain('玩具展,正常銷售,手鍊×2、耳環×1,350,現金');
+    expect(csv).toContain('玩具展,正常銷售,手鍊×2、耳環×1,350,現金,IG @foo');
   });
   it('贈送顯示類型;逗號與引號跳脫', () => {
     const csv = toSalesCSV([{
@@ -91,6 +92,22 @@ describe('toSalesCSV', () => {
     }], { o1: '松菸' });
     expect(csv).toContain('贈送');
     expect(csv).toContain('"A,B""C×1"');
+  });
+  it('未填 note 輸出空字串', () => {
+    const csv = toSalesCSV([{
+      items: [{ name: '貼紙', price: 30, qty: 1 }],
+      total: 30, paymentMethod: 'cash', type: 'sale', outingId: 'o1', createdAt: '2026-05-30T01:00:00.000Z',
+    }], { o1: '松菸' });
+    expect(csv).toContain('松菸,正常銷售,貼紙×1,30,現金,');
+  });
+  it('線上筆(outingId:null)場次欄為「線上」;已刪場次(outingId 不在對照表)場次欄為空字串,兩者可區分', () => {
+    const csv = toSalesCSV([
+      { items: [{ name: '貼紙', price: 30, qty: 1 }], total: 30, paymentMethod: 'cash', type: 'sale', outingId: null, createdAt: '2026-05-30T01:00:00.000Z' },
+      { items: [{ name: '貼紙', price: 30, qty: 1 }], total: 30, paymentMethod: 'cash', type: 'sale', outingId: 'deleted-outing', createdAt: '2026-05-30T02:00:00.000Z' },
+    ], { o1: '松菸' });
+    const rows = csv.slice(1).split('\r\n').slice(1); // 去 BOM + 表頭
+    expect(rows[0].split(',')[2]).toBe('線上');
+    expect(rows[1].split(',')[2]).toBe('');
   });
 });
 
@@ -252,6 +269,22 @@ describe('saleChangeSummary', () => {
     const after = { ...base, total: 80, type: 'gift', paymentMethod: 'transfer' };
     const changes = saleChangeSummary(base, after);
     expect(changes.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('改備註:描述含前後備註', () => {
+    const changes = saleChangeSummary({ ...base, note: 'IG @foo' }, { ...base, note: 'IG @bar' });
+    expect(changes).toHaveLength(1);
+    expect(changes[0]).toBe('備註 IG @foo → IG @bar');
+  });
+
+  it('備註從空到有值:前值以「(無)」呈現', () => {
+    const changes = saleChangeSummary({ ...base, note: '' }, { ...base, note: 'IG @foo' });
+    expect(changes).toHaveLength(1);
+    expect(changes[0]).toBe('備註 (無) → IG @foo');
+  });
+
+  it('未填備註視同相同(before 無 note 欄、after note 為空字串)不產生 diff', () => {
+    expect(saleChangeSummary(base, { ...base, note: '' })).toEqual([]);
   });
 });
 

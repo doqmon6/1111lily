@@ -55,6 +55,30 @@ test('場次明細 CSV:新表頭(場次/類型、無件數)與數值', async ({ 
   expect(text).toContain('玩具展,正常銷售,手鍊×2,200,現金');
 });
 
+test('全部明細 CSV:含備註欄,線上筆場次欄為「線上」', async ({ page }) => {
+  await addProduct(page, '貼紙', 30);
+  await startOuting(page, '玩具展');
+  await recordSale(page, '貼紙', 1, 'cash');
+
+  // 關閉場次後記一筆線上銷售(帶備註)
+  await page.locator('.tab[data-target="outing"]').click();
+  await page.getByRole('button', { name: '關閉場次' }).click();
+  await page.locator('.tab[data-target="sale"]').click();
+  await page.locator('.product-btn', { hasText: '貼紙' }).click();
+  await page.fill('#online-note', 'IG @foo');
+  await page.click('#checkout-btn');
+
+  await page.locator('.tab[data-target="export"]').click();
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    page.click('#export-all-btn'),
+  ]);
+  const text = (await fs.readFile(await download.path())).toString('utf8');
+  expect(text).toContain('日期,時間,場次,類型,商品明細,總金額,付款方式,備註');
+  expect(text).toContain('玩具展,正常銷售,貼紙×1,30,現金,');
+  expect(text).toContain('線上,正常銷售,貼紙×1,30,現金,IG @foo');
+});
+
 test('商品彙總 CSV:每商品 帶/賣/剩/收入/成本', async ({ page }) => {
   await addProduct(page, '明信片', 20, 8);
   await startOuting(page, '松菸', { bring: { 明信片: 30 } });

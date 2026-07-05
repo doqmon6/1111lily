@@ -5,6 +5,7 @@
 import * as products from './ui/products.js';
 import * as sale from './ui/sale.js';
 import * as outing from './ui/outing.js';
+import * as online from './ui/online.js';
 import * as exporter from './ui/exporter.js';
 import { setUserId, onDataChanged, _closeDb } from './db.js';
 import { signInWithGoogle, signOutUser, onAuth } from './auth.js';
@@ -15,6 +16,7 @@ const TITLES = {
   sale: '記銷售',
   products: '商品',
   outing: '場次',
+  online: '線上',
   export: '匯出備份',
 };
 
@@ -22,6 +24,7 @@ const VIEWS = {
   sale,
   products,
   outing,
+  online,
   export: exporter,
 };
 

@@ -6,9 +6,10 @@ import {
 } from '../db.js';
 import {
   summarizeDay, soldCost, sumFixedCosts, outingNet,
-  productAggregate, ranking, computeTotal, formatMoney, paymentLabel, typeLabel, dateKey, itemsSummary,
+  productAggregate, ranking, formatMoney, paymentLabel, typeLabel, dateKey, itemsSummary,
 } from '../logic.js';
 import { el } from './dom.js';
+import { renderSaleEditor } from './sale-editor.js';
 
 const FIXED_LABELS = ['攤租', '交通', '住宿'];
 
@@ -266,6 +267,7 @@ function renderSaleRow(sale) {
       type !== 'sale' ? el('span', { class: 'badge', text: typeLabel(type) }) : null,
       el('span', { class: 'sale-method', text: paymentLabel(sale.paymentMethod) }),
       el('span', { class: 'sale-total', text: formatMoney(sale.total) }),
+      sale.note ? el('span', { class: 'sale-note', text: sale.note }) : null,
     ),
     el('div', { class: 'row-actions' },
       el('button', { class: 'btn', type: 'button', text: '編輯', onClick: () => startEdit(sale) }),
@@ -281,58 +283,15 @@ async function onDelete(sale) {
 
 function startEdit(sale) {
   const li = container.querySelector(`#sales-list li[data-id="${sale.id}"]`);
-  const draft = sale.items.map((i) => ({ ...i }));
-  let method = sale.paymentMethod;
-  let type = sale.type ?? 'sale';
-
-  const itemsWrap = el('div', { class: 'edit-items' });
-  const totalEl = el('strong', { class: 'edit-total' });
-  const recalc = () => { totalEl.textContent = formatMoney(computeTotal(draft)); };
-
-  function renderItems() {
-    itemsWrap.replaceChildren(...draft.map((item) =>
-      el('div', { class: 'edit-item' },
-        el('span', { class: 'ei-name', text: item.name }),
-        el('div', { class: 'qty' },
-          el('button', { class: 'btn qbtn', type: 'button', text: '−', 'aria-label': '減少',
-            onClick: () => { item.qty -= 1; if (item.qty <= 0) draft.splice(draft.indexOf(item), 1); renderItems(); recalc(); } }),
-          el('span', { class: 'qv', text: String(item.qty) }),
-          el('button', { class: 'btn qbtn', type: 'button', text: '＋', 'aria-label': '增加',
-            onClick: () => { item.qty += 1; renderItems(); recalc(); } }),
-        ),
-      ),
-    ));
-  }
-
-  const methodSelect = el('select', { class: 'edit-method' },
-    el('option', { value: 'cash', text: '現金' }), el('option', { value: 'transfer', text: '轉帳' }));
-  methodSelect.value = method;
-  methodSelect.addEventListener('change', () => { method = methodSelect.value; });
-
-  const typeSelect = el('select', { class: 'edit-type' },
-    el('option', { value: 'sale', text: '正常銷售' }),
-    el('option', { value: 'gift', text: '贈送(不計營收)' }),
-    el('option', { value: 'replacement', text: '補送(不計營收)' }));
-  typeSelect.value = type;
-  typeSelect.addEventListener('change', () => { type = typeSelect.value; });
-
-  const editor = el('div', { class: 'sale-editor' },
-    itemsWrap,
-    el('label', { class: 'field' }, '付款方式', methodSelect),
-    el('label', { class: 'field' }, '類型', typeSelect),
-    el('div', { class: 'cart-total' }, '合計 ', totalEl),
-    el('div', { class: 'row-actions' },
-      el('button', { class: 'btn accent', type: 'button', text: '儲存',
-        onClick: async () => {
-          if (!draft.length) await deleteSale(sale.id);
-          else await updateSale({ ...sale, items: draft, total: computeTotal(draft), paymentMethod: method, type });
-          await render();
-        } }),
-      el('button', { class: 'btn', type: 'button', text: '取消', onClick: render }),
-    ),
-  );
-
-  renderItems();
-  recalc();
+  const editor = renderSaleEditor({
+    sale,
+    showDate: false,
+    onSave: async (patch) => {
+      if (!patch.items.length) await deleteSale(sale.id);
+      else await updateSale({ ...sale, ...patch });
+      await render();
+    },
+    onCancel: render,
+  });
   li.replaceChildren(editor);
 }

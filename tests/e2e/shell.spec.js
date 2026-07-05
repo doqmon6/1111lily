@@ -7,7 +7,7 @@ test.beforeEach(async ({ page }) => {
   await gotoAndLogin(page);
 });
 
-test('四個分頁可切換', async ({ page }) => {
+test('五個分頁可切換', async ({ page }) => {
   await expect(page.locator('#view-sale')).toBeVisible();
 
   await page.locator('.tab[data-target="products"]').click();
@@ -16,6 +16,9 @@ test('四個分頁可切換', async ({ page }) => {
 
   await page.locator('.tab[data-target="outing"]').click();
   await expect(page.locator('#view-outing')).toBeVisible();
+
+  await page.locator('.tab[data-target="online"]').click();
+  await expect(page.locator('#view-online')).toBeVisible();
 
   await page.locator('.tab[data-target="export"]').click();
   await expect(page.locator('#view-export')).toBeVisible();

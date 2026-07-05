@@ -134,11 +134,27 @@ describe('案例1:addSale → flush 後 payload 欄位正確', () => {
     expect(payload.total).toBe(200);
     expect(payload.payment).toBe('現金');
     expect(payload.deleted).toBe(false);
-    expect(payload.outing).toBe('');
+    expect(payload.outing).toBe('線上'); // outingId:null → 線上筆
+    expect(payload.note).toBe('');
 
     // 佇列清空
     const q = JSON.parse(localStorage.getItem(QUEUE_KEY) || '{}');
     expect(Object.keys(q)).toHaveLength(0);
+  });
+});
+
+// ─── 案例 1b:note 有值時原樣帶入 payload ───
+describe('案例1b:addSale 帶 note → payload.note 原樣帶入', () => {
+  it('note 欄位等於寫入值', async () => {
+    const sale = await addSale({
+      items: [ITEM], total: 200, paymentMethod: 'cash',
+      createdAt: '2026-07-04T10:30:00.000Z', outingId: null, type: 'sale', note: 'IG @foo',
+    });
+    await waitForMirrorFlush();
+
+    expect(capturedPayloads).toHaveLength(1);
+    expect(capturedPayloads[0].id).toBe(sale.id);
+    expect(capturedPayloads[0].note).toBe('IG @foo');
   });
 });
 
